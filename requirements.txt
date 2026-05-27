@@ -2,3 +2,4 @@ streamlit
 requests
 pandas
 pytrends
+urllib3<2.0
