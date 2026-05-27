@@ -1,8 +1,7 @@
 """
-네이버 키워드 분석기 v3
+네이버 키워드 분석기 v4
 ======================
-브라우저 localStorage에 API 키를 저장하여, 새로고침해도 유지됩니다.
-각 사용자의 브라우저에만 저장되므로 친구와 링크 공유도 가능 (각자 자기 키 입력).
+네이버 키워드 분석 + 구글 트렌드 통합 버전
 """
 
 import streamlit as st
@@ -35,9 +34,7 @@ if "api_configured" not in st.session_state:
 if "keys_loaded_from_browser" not in st.session_state:
     st.session_state.keys_loaded_from_browser = False
 
-# ================================================
-# localStorage에서 키 불러오기 (페이지 첫 로드 시)
-# ================================================
+# localStorage에서 키 불러오기 스크립트
 load_keys_html = """
 <script>
 (function() {
@@ -49,7 +46,6 @@ load_keys_html = """
         if (v) { loaded[k] = v; hasAny = true; }
     });
     if (hasAny) {
-        // URL 파라미터로 전달
         const params = new URLSearchParams(window.parent.location.search);
         let needReload = false;
         keys.forEach(k => {
@@ -68,7 +64,6 @@ load_keys_html = """
 </script>
 """
 
-# URL 파라미터에서 키 읽기 (localStorage → JS → URL → Python)
 query_params = st.query_params
 if not st.session_state.api_configured and not st.session_state.keys_loaded_from_browser:
     loaded_keys = {}
@@ -81,22 +76,16 @@ if not st.session_state.api_configured and not st.session_state.keys_loaded_from
         st.session_state.api_keys = loaded_keys
         st.session_state.api_configured = True
         st.session_state.keys_loaded_from_browser = True
-        # URL 파라미터 제거 (보안)
         st.query_params.clear()
     else:
-        # localStorage 읽기 시도 (한 번만)
         st.session_state.keys_loaded_from_browser = True
         components.html(load_keys_html, height=0)
 
-st.markdown('<div class="main-header">🔍 네이버 키워드 분석기</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">검색량 · 블로그 수 · 홈판 노출 확률을 한 번에 분석</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">🔍 키워드 종합 분석기</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">네이버 검색량 · 구글 트렌드 · 홈판 노출 확률을 한 번에</div>', unsafe_allow_html=True)
 
 
-# ================================================
-# JS 함수: localStorage에 저장
-# ================================================
 def save_to_localstorage(keys_dict):
-    """JS를 통해 brower localStorage에 저장"""
     js_data = json.dumps(keys_dict)
     save_html = f"""
     <script>
@@ -110,7 +99,6 @@ def save_to_localstorage(keys_dict):
 
 
 def clear_localstorage():
-    """localStorage 키 삭제"""
     clear_html = """
     <script>
     ['client_id', 'client_secret', 'ad_api_key', 'ad_secret_key', 'ad_customer_id'].forEach(k => {
@@ -128,8 +116,8 @@ with st.sidebar:
     st.header("⚙️ API 설정")
     
     if st.session_state.api_configured:
-        st.markdown('<div class="api-status-ok">✅ API 키 자동 로드 완료</div>', unsafe_allow_html=True)
-        st.caption("브라우저에 저장되어 다음 방문 시에도 자동 로드됩니다")
+        st.markdown('<div class="api-status-ok">✅ 네이버 API 로드 완료</div>', unsafe_allow_html=True)
+        st.caption("브라우저에 저장됨. 구글 트렌드는 API 키 불필요")
         st.write("")
         
         col_a, col_b = st.columns(2)
@@ -142,11 +130,12 @@ with st.sidebar:
                 st.session_state.api_configured = False
                 st.session_state.api_keys = {}
                 clear_localstorage()
-                st.success("브라우저 저장소에서 삭제됨")
+                st.success("삭제됨")
                 time.sleep(1)
                 st.rerun()
     else:
-        st.markdown('<div class="api-status-no">⚠️ API 키를 입력하세요</div>', unsafe_allow_html=True)
+        st.markdown('<div class="api-status-no">⚠️ 네이버 API 키 입력 필요</div>', unsafe_allow_html=True)
+        st.caption("구글 트렌드 탭은 키 없이도 사용 가능")
     
     st.markdown("---")
     
@@ -170,7 +159,7 @@ with st.sidebar:
                 st.session_state.api_keys = keys_dict
                 st.session_state.api_configured = True
                 save_to_localstorage(keys_dict)
-                st.success("✅ 저장 완료! 다음부터는 자동으로 불러옵니다.")
+                st.success("✅ 저장 완료!")
                 time.sleep(1)
                 st.rerun()
             else:
@@ -178,20 +167,12 @@ with st.sidebar:
     
     st.markdown("---")
     st.markdown("""**🔒 보안 안내**
-- 키는 **본인 브라우저에만** 저장됩니다 (서버 X)
-- 다른 사람이 이 사이트 들어가도 본인 키 못 봄
-- 친구와 링크 공유 시, 친구는 자기 키 따로 입력""")
-    st.markdown("---")
-    st.markdown("""**📊 점수 가이드**
-- 🟢 매우쉬움 (75+)
-- 🟢 쉬움 (55~74)
-- 🟡 보통 (35~54)
-- 🔴 어려움 (20~34)
-- 🔴 매우어려움 (~19)""")
+- 네이버 키는 본인 브라우저에만 저장
+- 구글 트렌드는 API 키 불필요""")
 
 
 # ================================================
-# 분석 함수들
+# 네이버 분석 함수들
 # ================================================
 def _sig(secret, ts, method, uri):
     msg = f"{ts}.{method}.{uri}"
@@ -231,9 +212,9 @@ def analyze_keyword(keyword, keys):
     except requests.exceptions.HTTPError as e:
         code = e.response.status_code
         if code == 401:
-            return {"keyword": keyword, "error": "검색광고 API 인증 실패 (401) - 키 확인"}
+            return {"keyword": keyword, "error": "검색광고 API 인증 실패 (401)"}
         elif code == 403:
-            return {"keyword": keyword, "error": "검색광고 API 권한 거부 (403) - 비즈머니 잔액 또는 라이선스 확인"}
+            return {"keyword": keyword, "error": "검색광고 API 권한 거부 (403) - 비즈머니 잔액 확인"}
         return {"keyword": keyword, "error": f"검색광고 API 오류 ({code})"}
     except Exception as e:
         return {"keyword": keyword, "error": f"검색광고 API 오류: {e}"}
@@ -268,7 +249,7 @@ def analyze_keyword(keyword, keys):
             counts[section] = rr.json().get("total", 0)
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 401:
-                return {"keyword": keyword, "error": "검색 API 인증 실패 - Client ID/Secret 확인"}
+                return {"keyword": keyword, "error": "검색 API 인증 실패"}
             counts[section] = 0
         except Exception:
             counts[section] = 0
@@ -337,30 +318,71 @@ def analyze_keyword(keyword, keys):
 
 
 # ================================================
-# 메인 영역
+# 구글 트렌드 함수들 (pytrends 사용)
 # ================================================
-if not st.session_state.api_configured:
-    st.warning("👈 왼쪽 사이드바에서 API 키를 먼저 입력해주세요")
-    st.info("💡 한 번 저장하면 다음 방문 시 자동으로 불러옵니다!")
-    st.markdown("---")
-    st.markdown("### 🔑 API 키 발급 방법")
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("""**검색 API** (블로그 수 조회)
-1. https://developers.naver.com 접속
-2. 로그인 → Application 등록
-3. 사용 API: **검색** 체크
-4. **Client ID**, **Client Secret** 발급""")
-    with col_b:
-        st.markdown("""**검색광고 API** (검색량 조회)
-1. https://searchad.naver.com 접속
-2. 회원가입 (개인 광고주 가능)
-3. 도구 → API 사용 관리
-4. **Access License**, **Secret Key**, **Customer ID** 확인""")
-else:
-    tab1, tab2 = st.tabs(["🎯 단일 키워드", "📋 일괄 분석"])
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_google_trends(keywords_list, timeframe="today 12-m", geo="KR"):
+    """구글 트렌드 데이터 조회 (캐시 1시간)"""
+    try:
+        from pytrends.request import TrendReq
+    except ImportError:
+        return {"error": "pytrends 라이브러리가 설치되지 않았습니다. requirements.txt 확인"}
     
-    with tab1:
+    try:
+        pytrends = TrendReq(hl="ko-KR", tz=540, timeout=(10, 25), retries=2, backoff_factor=0.5)
+        # 키워드는 최대 5개까지
+        kws = keywords_list[:5]
+        pytrends.build_payload(kws, cat=0, timeframe=timeframe, geo=geo, gprop="")
+        
+        result = {"keywords": kws, "error": None}
+        
+        # 1) 시간별 관심도
+        try:
+            interest_over_time = pytrends.interest_over_time()
+            if not interest_over_time.empty:
+                if "isPartial" in interest_over_time.columns:
+                    interest_over_time = interest_over_time.drop(columns=["isPartial"])
+                result["interest_over_time"] = interest_over_time
+        except Exception as e:
+            result["interest_over_time_error"] = str(e)
+        
+        # 2) 지역별 관심도
+        try:
+            interest_by_region = pytrends.interest_by_region(resolution="REGION", inc_low_vol=True, inc_geo_code=False)
+            if not interest_by_region.empty:
+                result["interest_by_region"] = interest_by_region.sort_values(by=kws[0], ascending=False).head(10)
+        except Exception as e:
+            result["interest_by_region_error"] = str(e)
+        
+        # 3) 연관 검색어 (첫 번째 키워드만)
+        try:
+            related = pytrends.related_queries()
+            if related and kws[0] in related:
+                top = related[kws[0]].get("top")
+                rising = related[kws[0]].get("rising")
+                if top is not None and not top.empty:
+                    result["related_top"] = top.head(10)
+                if rising is not None and not rising.empty:
+                    result["related_rising"] = rising.head(10)
+        except Exception as e:
+            result["related_error"] = str(e)
+        
+        return result
+    
+    except Exception as e:
+        return {"error": f"구글 트렌드 조회 실패: {str(e)[:200]}"}
+
+
+# ================================================
+# 메인 영역 - 탭 3개
+# ================================================
+tab1, tab2, tab3 = st.tabs(["🎯 네이버 단일", "📋 네이버 일괄", "📈 구글 트렌드"])
+
+# ============ 탭1: 네이버 단일 ============
+with tab1:
+    if not st.session_state.api_configured:
+        st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
+    else:
         keyword = st.text_input("분석할 키워드", placeholder="예: 다이어트", key="single_kw")
         
         if st.button("🔍 분석 시작", type="primary", use_container_width=True, key="single_btn"):
@@ -415,8 +437,12 @@ else:
                         rdf = pd.DataFrame(result["related_keywords"])
                         rdf["월간검색"] = rdf["월간검색"].apply(lambda x: f"{x:,}")
                         st.dataframe(rdf, hide_index=True, use_container_width=True)
-    
-    with tab2:
+
+# ============ 탭2: 네이버 일괄 ============
+with tab2:
+    if not st.session_state.api_configured:
+        st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
+    else:
         keywords_text = st.text_area("키워드들 (한 줄에 하나씩)", placeholder="다이어트\n홈트레이닝\n간헐적단식", height=150)
         
         if st.button("🔍 일괄 분석", type="primary", use_container_width=True, key="bulk_btn"):
@@ -459,5 +485,102 @@ else:
                     file_name=f"keyword_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv", use_container_width=True)
 
+# ============ 탭3: 구글 트렌드 ============
+with tab3:
+    st.info("💡 구글 트렌드는 API 키가 필요 없습니다. 단, 한 번에 최대 5개 키워드까지 비교 가능.")
+    
+    col_a, col_b, col_c = st.columns([2, 1, 1])
+    with col_a:
+        trend_keywords = st.text_input(
+            "키워드 (쉼표로 구분, 최대 5개)",
+            placeholder="예: 다이어트, 홈트레이닝, 간헐적단식",
+            key="trend_kw"
+        )
+    with col_b:
+        timeframe_label = st.selectbox(
+            "기간",
+            ["지난 7일", "지난 1개월", "지난 3개월", "지난 12개월", "지난 5년"],
+            index=3,
+            key="trend_tf"
+        )
+        timeframe_map = {
+            "지난 7일": "now 7-d",
+            "지난 1개월": "today 1-m",
+            "지난 3개월": "today 3-m",
+            "지난 12개월": "today 12-m",
+            "지난 5년": "today 5-y",
+        }
+    with col_c:
+        geo = st.selectbox("국가", ["한국", "전세계", "미국", "일본"], index=0, key="trend_geo")
+        geo_map = {"한국": "KR", "전세계": "", "미국": "US", "일본": "JP"}
+    
+    if st.button("📈 트렌드 분석", type="primary", use_container_width=True, key="trend_btn"):
+        kws = [k.strip() for k in trend_keywords.split(",") if k.strip()]
+        if not kws:
+            st.error("키워드를 입력해주세요")
+        elif len(kws) > 5:
+            st.error("최대 5개까지만 입력 가능합니다")
+        else:
+            with st.spinner(f"구글 트렌드 조회 중... (최대 30초)"):
+                result = get_google_trends(kws, timeframe_map[timeframe_label], geo_map[geo])
+            
+            if result.get("error"):
+                st.error(f"❌ {result['error']}")
+                st.caption("⚠️ 구글 트렌드는 가끔 일시적으로 차단될 수 있습니다. 1~2분 후 다시 시도해주세요.")
+            else:
+                st.success(f"✅ '{', '.join(result['keywords'])}' 분석 완료")
+                
+                # 1) 시간별 관심도 그래프
+                if "interest_over_time" in result:
+                    st.subheader("📈 시간별 관심도 (0~100 상대값)")
+                    st.line_chart(result["interest_over_time"], height=300)
+                    
+                    # 평균/최댓값 요약
+                    iot = result["interest_over_time"]
+                    summary_data = []
+                    for kw in result["keywords"]:
+                        if kw in iot.columns:
+                            summary_data.append({
+                                "키워드": kw,
+                                "평균": round(iot[kw].mean(), 1),
+                                "최댓값": int(iot[kw].max()),
+                                "최솟값": int(iot[kw].min()),
+                                "현재": int(iot[kw].iloc[-1]) if len(iot) > 0 else 0,
+                            })
+                    if summary_data:
+                        st.dataframe(pd.DataFrame(summary_data), hide_index=True, use_container_width=True)
+                elif "interest_over_time_error" in result:
+                    st.warning(f"시간별 데이터 조회 실패: {result['interest_over_time_error']}")
+                
+                # 2) 지역별 관심도
+                if "interest_by_region" in result:
+                    st.markdown("---")
+                    st.subheader("🌏 지역별 관심도 TOP 10")
+                    st.bar_chart(result["interest_by_region"], height=300)
+                
+                # 3) 연관 검색어
+                col_top, col_rise = st.columns(2)
+                with col_top:
+                    if "related_top" in result:
+                        st.subheader(f"🔝 '{result['keywords'][0]}' 인기 연관어")
+                        st.dataframe(result["related_top"], hide_index=True, use_container_width=True)
+                
+                with col_rise:
+                    if "related_rising" in result:
+                        st.subheader(f"🚀 '{result['keywords'][0]}' 급상승 연관어")
+                        st.dataframe(result["related_rising"], hide_index=True, use_container_width=True)
+                
+                # CSV 다운로드
+                if "interest_over_time" in result:
+                    st.markdown("---")
+                    csv = result["interest_over_time"].to_csv(index=True).encode("utf-8-sig")
+                    st.download_button(
+                        "📥 시간별 데이터 CSV 다운로드",
+                        csv,
+                        file_name=f"google_trends_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
+
 st.markdown("---")
-st.caption("💡 네이버 키워드 분석기 v3.0 | 키 자동 저장")
+st.caption("💡 키워드 종합 분석기 v4.0 | 네이버 API + 구글 트렌드")
