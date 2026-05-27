@@ -1,9 +1,12 @@
 """
-네이버 키워드 분석기 - 웹사이트 버전
-API 키를 사이트 안에서 입력. 브라우저 세션에만 저장됨.
+네이버 키워드 분석기 v3
+======================
+브라우저 localStorage에 API 키를 저장하여, 새로고침해도 유지됩니다.
+각 사용자의 브라우저에만 저장되므로 친구와 링크 공유도 가능 (각자 자기 키 입력).
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import requests
 import time
@@ -11,6 +14,7 @@ import hmac
 import hashlib
 import base64
 import math
+import json
 from datetime import datetime
 
 st.set_page_config(page_title="네이버 키워드 분석기", page_icon="🔍", layout="wide")
@@ -28,23 +32,121 @@ st.markdown("""
 if "api_configured" not in st.session_state:
     st.session_state.api_configured = False
     st.session_state.api_keys = {}
+if "keys_loaded_from_browser" not in st.session_state:
+    st.session_state.keys_loaded_from_browser = False
+
+# ================================================
+# localStorage에서 키 불러오기 (페이지 첫 로드 시)
+# ================================================
+load_keys_html = """
+<script>
+(function() {
+    const keys = ['client_id', 'client_secret', 'ad_api_key', 'ad_secret_key', 'ad_customer_id'];
+    const loaded = {};
+    let hasAny = false;
+    keys.forEach(k => {
+        const v = localStorage.getItem('naver_kw_' + k);
+        if (v) { loaded[k] = v; hasAny = true; }
+    });
+    if (hasAny) {
+        // URL 파라미터로 전달
+        const params = new URLSearchParams(window.parent.location.search);
+        let needReload = false;
+        keys.forEach(k => {
+            if (loaded[k] && !params.get(k)) {
+                params.set(k, loaded[k]);
+                needReload = true;
+            }
+        });
+        if (needReload) {
+            const newUrl = window.parent.location.pathname + '?' + params.toString();
+            window.parent.history.replaceState({}, '', newUrl);
+            window.parent.location.reload();
+        }
+    }
+})();
+</script>
+"""
+
+# URL 파라미터에서 키 읽기 (localStorage → JS → URL → Python)
+query_params = st.query_params
+if not st.session_state.api_configured and not st.session_state.keys_loaded_from_browser:
+    loaded_keys = {}
+    expected = ['client_id', 'client_secret', 'ad_api_key', 'ad_secret_key', 'ad_customer_id']
+    for k in expected:
+        if k in query_params:
+            loaded_keys[k] = query_params[k]
+    
+    if len(loaded_keys) == 5:
+        st.session_state.api_keys = loaded_keys
+        st.session_state.api_configured = True
+        st.session_state.keys_loaded_from_browser = True
+        # URL 파라미터 제거 (보안)
+        st.query_params.clear()
+    else:
+        # localStorage 읽기 시도 (한 번만)
+        st.session_state.keys_loaded_from_browser = True
+        components.html(load_keys_html, height=0)
 
 st.markdown('<div class="main-header">🔍 네이버 키워드 분석기</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">검색량 · 블로그 수 · 홈판 노출 확률을 한 번에 분석</div>', unsafe_allow_html=True)
 
-# ===== 사이드바: API 설정 =====
+
+# ================================================
+# JS 함수: localStorage에 저장
+# ================================================
+def save_to_localstorage(keys_dict):
+    """JS를 통해 brower localStorage에 저장"""
+    js_data = json.dumps(keys_dict)
+    save_html = f"""
+    <script>
+    const data = {js_data};
+    Object.keys(data).forEach(k => {{
+        localStorage.setItem('naver_kw_' + k, data[k]);
+    }});
+    </script>
+    """
+    components.html(save_html, height=0)
+
+
+def clear_localstorage():
+    """localStorage 키 삭제"""
+    clear_html = """
+    <script>
+    ['client_id', 'client_secret', 'ad_api_key', 'ad_secret_key', 'ad_customer_id'].forEach(k => {
+        localStorage.removeItem('naver_kw_' + k);
+    });
+    </script>
+    """
+    components.html(clear_html, height=0)
+
+
+# ================================================
+# 사이드바: API 설정
+# ================================================
 with st.sidebar:
     st.header("⚙️ API 설정")
     
     if st.session_state.api_configured:
-        st.markdown('<div class="api-status-ok">✅ API 키 설정 완료</div>', unsafe_allow_html=True)
+        st.markdown('<div class="api-status-ok">✅ API 키 자동 로드 완료</div>', unsafe_allow_html=True)
+        st.caption("브라우저에 저장되어 다음 방문 시에도 자동 로드됩니다")
         st.write("")
-        if st.button("🔄 다시 설정", use_container_width=True):
-            st.session_state.api_configured = False
-            st.session_state.api_keys = {}
-            st.rerun()
+        
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("✏️ 수정", use_container_width=True):
+                st.session_state.api_configured = False
+                st.rerun()
+        with col_b:
+            if st.button("🗑️ 삭제", use_container_width=True):
+                st.session_state.api_configured = False
+                st.session_state.api_keys = {}
+                clear_localstorage()
+                st.success("브라우저 저장소에서 삭제됨")
+                time.sleep(1)
+                st.rerun()
     else:
-        st.markdown('<div class="api-status-no">⚠️ API 키를 먼저 입력하세요</div>', unsafe_allow_html=True)
+        st.markdown('<div class="api-status-no">⚠️ API 키를 입력하세요</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
@@ -58,21 +160,27 @@ with st.sidebar:
         ad_secret_key = st.text_input("Secret Key", value=st.session_state.api_keys.get("ad_secret_key", ""), type="password")
         ad_customer_id = st.text_input("Customer ID", value=st.session_state.api_keys.get("ad_customer_id", ""))
         
-        if st.button("💾 저장", type="primary", use_container_width=True):
+        if st.button("💾 저장 (브라우저에 보관)", type="primary", use_container_width=True):
             if all([client_id, client_secret, ad_api_key, ad_secret_key, ad_customer_id]):
-                st.session_state.api_keys = {
+                keys_dict = {
                     "client_id": client_id, "client_secret": client_secret,
                     "ad_api_key": ad_api_key, "ad_secret_key": ad_secret_key,
                     "ad_customer_id": ad_customer_id,
                 }
+                st.session_state.api_keys = keys_dict
                 st.session_state.api_configured = True
-                st.success("✅ 저장 완료!")
+                save_to_localstorage(keys_dict)
+                st.success("✅ 저장 완료! 다음부터는 자동으로 불러옵니다.")
+                time.sleep(1)
                 st.rerun()
             else:
                 st.error("⚠️ 5개 키 모두 입력하세요")
     
     st.markdown("---")
-    st.markdown("**🔒 보안**\n\n키는 브라우저 세션에만 저장됩니다. 페이지 새로고침/종료 시 사라집니다. 서버에 저장 안 됨.")
+    st.markdown("""**🔒 보안 안내**
+- 키는 **본인 브라우저에만** 저장됩니다 (서버 X)
+- 다른 사람이 이 사이트 들어가도 본인 키 못 봄
+- 친구와 링크 공유 시, 친구는 자기 키 따로 입력""")
     st.markdown("---")
     st.markdown("""**📊 점수 가이드**
 - 🟢 매우쉬움 (75+)
@@ -82,7 +190,9 @@ with st.sidebar:
 - 🔴 매우어려움 (~19)""")
 
 
-# ===== 분석 함수들 =====
+# ================================================
+# 분석 함수들
+# ================================================
 def _sig(secret, ts, method, uri):
     msg = f"{ts}.{method}.{uri}"
     return base64.b64encode(hmac.new(bytes(secret, "utf-8"), msg.encode("utf-8"), hashlib.sha256).digest()).decode("utf-8")
@@ -110,7 +220,6 @@ def analyze_keyword(keyword, keys):
     if not keyword:
         return {"error": "빈 키워드"}
     
-    # 1) 검색량 + 연관 키워드
     try:
         r = requests.get(
             "https://api.naver.com/keywordstool",
@@ -120,9 +229,12 @@ def analyze_keyword(keyword, keys):
         r.raise_for_status()
         data = r.json()
     except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 401:
-            return {"keyword": keyword, "error": "검색광고 API 인증 실패 - 키 확인"}
-        return {"keyword": keyword, "error": f"검색광고 API 오류: {e}"}
+        code = e.response.status_code
+        if code == 401:
+            return {"keyword": keyword, "error": "검색광고 API 인증 실패 (401) - 키 확인"}
+        elif code == 403:
+            return {"keyword": keyword, "error": "검색광고 API 권한 거부 (403) - 비즈머니 잔액 또는 라이선스 확인"}
+        return {"keyword": keyword, "error": f"검색광고 API 오류 ({code})"}
     except Exception as e:
         return {"keyword": keyword, "error": f"검색광고 API 오류: {e}"}
     
@@ -143,7 +255,6 @@ def analyze_keyword(keyword, keys):
             "경쟁": item.get("compIdx", ""),
         })
     
-    # 2) 문서 수
     search_headers = {
         "X-Naver-Client-Id": keys["client_id"],
         "X-Naver-Client-Secret": keys["client_secret"],
@@ -162,7 +273,6 @@ def analyze_keyword(keyword, keys):
         except Exception:
             counts[section] = 0
     
-    # 3) 최근성
     avg_days, recent_30d, fresh = 999, 0, 0
     try:
         rr = requests.get("https://openapi.naver.com/v1/search/blog.json",
@@ -185,7 +295,6 @@ def analyze_keyword(keyword, keys):
             else: fresh = max(0, 1 - (avg_days - 30) / 335)
     except Exception: pass
     
-    # 4) 노출 확률 계산
     blog_n = counts.get("blog", 0)
     if blog_n == 0: ratio_s = 1.0
     else:
@@ -227,9 +336,12 @@ def analyze_keyword(keyword, keys):
     }
 
 
-# ===== 메인 영역 =====
+# ================================================
+# 메인 영역
+# ================================================
 if not st.session_state.api_configured:
     st.warning("👈 왼쪽 사이드바에서 API 키를 먼저 입력해주세요")
+    st.info("💡 한 번 저장하면 다음 방문 시 자동으로 불러옵니다!")
     st.markdown("---")
     st.markdown("### 🔑 API 키 발급 방법")
     col_a, col_b = st.columns(2)
@@ -348,4 +460,4 @@ else:
                     mime="text/csv", use_container_width=True)
 
 st.markdown("---")
-st.caption("💡 네이버 키워드 분석기 v2.0")
+st.caption("💡 네이버 키워드 분석기 v3.0 | 키 자동 저장")
