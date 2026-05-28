@@ -1,7 +1,7 @@
 """
-네이버 키워드 분석기 v4
-======================
-네이버 키워드 분석 + 구글 트렌드 통합 버전
+키워드 종합 분석기 v5
+====================
+네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 구글 실시간 인기검색어
 """
 
 import streamlit as st
@@ -14,9 +14,9 @@ import hashlib
 import base64
 import math
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
-st.set_page_config(page_title="네이버 키워드 분석기", page_icon="🔍", layout="wide")
+st.set_page_config(page_title="키워드 종합 분석기", page_icon="🔍", layout="wide")
 
 st.markdown("""
 <style>
@@ -34,7 +34,6 @@ if "api_configured" not in st.session_state:
 if "keys_loaded_from_browser" not in st.session_state:
     st.session_state.keys_loaded_from_browser = False
 
-# localStorage에서 키 불러오기 스크립트
 load_keys_html = """
 <script>
 (function() {
@@ -82,7 +81,7 @@ if not st.session_state.api_configured and not st.session_state.keys_loaded_from
         components.html(load_keys_html, height=0)
 
 st.markdown('<div class="main-header">🔍 키워드 종합 분석기</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">네이버 검색량 · 구글 트렌드 · 홈판 노출 확률을 한 번에</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">네이버 + 구글 + 데이터랩 + 실시간 트렌드까지</div>', unsafe_allow_html=True)
 
 
 def save_to_localstorage(keys_dict):
@@ -110,16 +109,15 @@ def clear_localstorage():
 
 
 # ================================================
-# 사이드바: API 설정
+# 사이드바
 # ================================================
 with st.sidebar:
     st.header("⚙️ API 설정")
     
     if st.session_state.api_configured:
         st.markdown('<div class="api-status-ok">✅ 네이버 API 로드 완료</div>', unsafe_allow_html=True)
-        st.caption("브라우저에 저장됨. 구글 트렌드는 API 키 불필요")
+        st.caption("브라우저에 저장됨")
         st.write("")
-        
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("✏️ 수정", use_container_width=True):
@@ -135,12 +133,12 @@ with st.sidebar:
                 st.rerun()
     else:
         st.markdown('<div class="api-status-no">⚠️ 네이버 API 키 입력 필요</div>', unsafe_allow_html=True)
-        st.caption("구글 트렌드 탭은 키 없이도 사용 가능")
+        st.caption("구글 탭은 키 없이도 사용 가능")
     
     st.markdown("---")
     
     with st.expander("🔑 네이버 API 키 입력", expanded=not st.session_state.api_configured):
-        st.caption("**검색 API** (developers.naver.com)")
+        st.caption("**검색/데이터랩 API** (developers.naver.com)")
         client_id = st.text_input("Client ID", value=st.session_state.api_keys.get("client_id", ""), type="password")
         client_secret = st.text_input("Client Secret", value=st.session_state.api_keys.get("client_secret", ""), type="password")
         
@@ -166,13 +164,16 @@ with st.sidebar:
                 st.error("⚠️ 5개 키 모두 입력하세요")
     
     st.markdown("---")
-    st.markdown("""**🔒 보안 안내**
-- 네이버 키는 본인 브라우저에만 저장
-- 구글 트렌드는 API 키 불필요""")
+    st.markdown("""**📋 탭 안내**
+- 🎯 네이버 단일: 키워드 종합 분석
+- 📋 네이버 일괄: 여러 개 한번에
+- 📈 구글 트렌드: 키워드 트렌드 비교
+- 📊 데이터랩: 연령/성별 분석
+- 🔥 실시간 인기: 지금 뜨는 키워드""")
 
 
 # ================================================
-# 네이버 분석 함수들
+# 네이버 분석 함수
 # ================================================
 def _sig(secret, ts, method, uri):
     msg = f"{ts}.{method}.{uri}"
@@ -318,43 +319,38 @@ def analyze_keyword(keyword, keys):
 
 
 # ================================================
-# 구글 트렌드 함수들 (pytrends 사용)
+# 구글 트렌드
 # ================================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_google_trends(keywords_list, timeframe="today 12-m", geo="KR"):
-    """구글 트렌드 데이터 조회 (캐시 1시간)"""
     try:
         from pytrends.request import TrendReq
     except ImportError:
-        return {"error": "pytrends 라이브러리가 설치되지 않았습니다. requirements.txt 확인"}
+        return {"error": "pytrends 라이브러리가 설치되지 않았습니다"}
     
     try:
         pytrends = TrendReq(hl="ko-KR", tz=540, timeout=(10, 25), retries=2, backoff_factor=0.5)
-        # 키워드는 최대 5개까지
         kws = keywords_list[:5]
         pytrends.build_payload(kws, cat=0, timeframe=timeframe, geo=geo, gprop="")
         
         result = {"keywords": kws, "error": None}
         
-        # 1) 시간별 관심도
         try:
-            interest_over_time = pytrends.interest_over_time()
-            if not interest_over_time.empty:
-                if "isPartial" in interest_over_time.columns:
-                    interest_over_time = interest_over_time.drop(columns=["isPartial"])
-                result["interest_over_time"] = interest_over_time
+            iot = pytrends.interest_over_time()
+            if not iot.empty:
+                if "isPartial" in iot.columns:
+                    iot = iot.drop(columns=["isPartial"])
+                result["interest_over_time"] = iot
         except Exception as e:
             result["interest_over_time_error"] = str(e)
         
-        # 2) 지역별 관심도
         try:
-            interest_by_region = pytrends.interest_by_region(resolution="REGION", inc_low_vol=True, inc_geo_code=False)
-            if not interest_by_region.empty:
-                result["interest_by_region"] = interest_by_region.sort_values(by=kws[0], ascending=False).head(10)
+            ibr = pytrends.interest_by_region(resolution="REGION", inc_low_vol=True, inc_geo_code=False)
+            if not ibr.empty:
+                result["interest_by_region"] = ibr.sort_values(by=kws[0], ascending=False).head(10)
         except Exception as e:
             result["interest_by_region_error"] = str(e)
         
-        # 3) 연관 검색어 (첫 번째 키워드만)
         try:
             related = pytrends.related_queries()
             if related and kws[0] in related:
@@ -368,15 +364,164 @@ def get_google_trends(keywords_list, timeframe="today 12-m", geo="KR"):
             result["related_error"] = str(e)
         
         return result
-    
     except Exception as e:
         return {"error": f"구글 트렌드 조회 실패: {str(e)[:200]}"}
 
 
 # ================================================
-# 메인 영역 - 탭 3개
+# 네이버 데이터랩 (신규)
 # ================================================
-tab1, tab2, tab3 = st.tabs(["🎯 네이버 단일", "📋 네이버 일괄", "📈 구글 트렌드"])
+def get_datalab_trend(keywords_groups, start_date, end_date, time_unit, 
+                      keys, device="", ages=None, gender=""):
+    """
+    네이버 데이터랩 검색어 트렌드 조회
+    keywords_groups: [{"groupName": "다이어트", "keywords": ["다이어트"]}, ...]
+    """
+    url = "https://openapi.naver.com/v1/datalab/search"
+    headers = {
+        "X-Naver-Client-Id": keys["client_id"],
+        "X-Naver-Client-Secret": keys["client_secret"],
+        "Content-Type": "application/json",
+    }
+    body = {
+        "startDate": start_date,
+        "endDate": end_date,
+        "timeUnit": time_unit,
+        "keywordGroups": keywords_groups,
+    }
+    if device:
+        body["device"] = device
+    if ages:
+        body["ages"] = ages
+    if gender:
+        body["gender"] = gender
+    
+    try:
+        r = requests.post(url, headers=headers, json=body, timeout=15)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as e:
+        code = e.response.status_code
+        if code == 401:
+            return {"error": "인증 실패 - Client ID/Secret 확인"}
+        elif code == 403:
+            return {"error": "권한 없음 - developers.naver.com에서 '데이터랩(검색어 트렌드)' API 권한을 추가하세요"}
+        else:
+            return {"error": f"데이터랩 API 오류 ({code}): {e.response.text[:200]}"}
+    except Exception as e:
+        return {"error": f"데이터랩 API 오류: {str(e)[:200]}"}
+
+
+def analyze_demographics(keyword, keys):
+    """키워드의 연령대/성별/기기별 분석"""
+    today = datetime.now()
+    end_date = today.strftime("%Y-%m-%d")
+    start_date = (today - timedelta(days=90)).strftime("%Y-%m-%d")  # 최근 3개월
+    
+    groups = [{"groupName": keyword, "keywords": [keyword]}]
+    result = {"keyword": keyword}
+    
+    # 1) 시간별 추이
+    base = get_datalab_trend(groups, start_date, end_date, "date", keys)
+    if "error" in base:
+        return {"error": base["error"]}
+    result["time_trend"] = base
+    
+    # 2) 연령대별 (10대~60대+)
+    age_results = {}
+    age_groups = {
+        "10대": ["2"], "20대": ["3", "4"], "30대": ["5", "6"],
+        "40대": ["7", "8"], "50대": ["9", "10"], "60대+": ["11"]
+    }
+    for age_label, age_codes in age_groups.items():
+        r = get_datalab_trend(groups, start_date, end_date, "month", keys, ages=age_codes)
+        if "error" not in r and r.get("results"):
+            # 평균값 계산
+            data_points = r["results"][0].get("data", [])
+            if data_points:
+                avg = sum(d["ratio"] for d in data_points) / len(data_points)
+                age_results[age_label] = round(avg, 2)
+            else:
+                age_results[age_label] = 0
+        else:
+            age_results[age_label] = 0
+        time.sleep(0.2)  # rate limit 회피
+    result["by_age"] = age_results
+    
+    # 3) 성별
+    gender_results = {}
+    for g_label, g_code in [("남성", "m"), ("여성", "f")]:
+        r = get_datalab_trend(groups, start_date, end_date, "month", keys, gender=g_code)
+        if "error" not in r and r.get("results"):
+            data_points = r["results"][0].get("data", [])
+            if data_points:
+                avg = sum(d["ratio"] for d in data_points) / len(data_points)
+                gender_results[g_label] = round(avg, 2)
+            else:
+                gender_results[g_label] = 0
+        else:
+            gender_results[g_label] = 0
+        time.sleep(0.2)
+    result["by_gender"] = gender_results
+    
+    # 4) 기기별
+    device_results = {}
+    for d_label, d_code in [("PC", "pc"), ("모바일", "mo")]:
+        r = get_datalab_trend(groups, start_date, end_date, "month", keys, device=d_code)
+        if "error" not in r and r.get("results"):
+            data_points = r["results"][0].get("data", [])
+            if data_points:
+                avg = sum(d["ratio"] for d in data_points) / len(data_points)
+                device_results[d_label] = round(avg, 2)
+            else:
+                device_results[d_label] = 0
+        else:
+            device_results[d_label] = 0
+        time.sleep(0.2)
+    result["by_device"] = device_results
+    
+    return result
+
+
+# ================================================
+# 구글 실시간 인기검색어 (신규)
+# ================================================
+@st.cache_data(ttl=600, show_spinner=False)  # 10분 캐시
+def get_realtime_trending(geo="KR"):
+    try:
+        from pytrends.request import TrendReq
+    except ImportError:
+        return {"error": "pytrends 라이브러리가 필요합니다"}
+    
+    try:
+        pytrends = TrendReq(hl="ko-KR", tz=540, timeout=(10, 25), retries=2, backoff_factor=0.5)
+        
+        # 일일 인기 검색어 (가장 안정적)
+        try:
+            df = pytrends.trending_searches(pn="south_korea" if geo == "KR" 
+                                            else "united_states" if geo == "US"
+                                            else "japan" if geo == "JP"
+                                            else "south_korea")
+            if not df.empty:
+                df.columns = ["키워드"]
+                df.index = df.index + 1
+                df.index.name = "순위"
+                return {"trending": df, "error": None}
+        except Exception as e:
+            return {"error": f"실시간 인기 검색어 조회 실패: {str(e)[:200]}"}
+        
+        return {"error": "데이터 없음"}
+    except Exception as e:
+        return {"error": f"구글 트렌드 연결 실패: {str(e)[:200]}"}
+
+
+# ================================================
+# 메인 영역 - 탭 5개
+# ================================================
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "🎯 네이버 단일", "📋 네이버 일괄", "📈 구글 트렌드",
+    "📊 데이터랩 (인구통계)", "🔥 실시간 인기"
+])
 
 # ============ 탭1: 네이버 단일 ============
 with tab1:
@@ -403,24 +548,20 @@ with tab1:
                     
                     st.markdown("---")
                     col_L, col_R = st.columns(2)
-                    
                     with col_L:
                         st.subheader("📊 검색량 상세")
                         st.write(f"- **PC 월간**: {result['monthly_pc']:,}회")
                         st.write(f"- **모바일 월간**: {result['monthly_mobile']:,}회")
                         st.write(f"- **모바일 비율**: {result['mobile_ratio']*100:.1f}%")
                         st.write(f"- **경쟁 강도**: {result['competition']}")
-                        
                         st.subheader("📄 문서 수")
                         st.write(f"- **블로그**: {result['blog_count']:,}개")
                         st.write(f"- **카페**: {result['cafe_count']:,}개")
                         st.write(f"- **웹문서**: {result['webkr_count']:,}개")
-                        
                         st.subheader("🕒 최근성")
                         st.write(f"- **최근 30일 내 글**: {result['recent_30d']}개")
                         if result['avg_days'] is not None:
                             st.write(f"- **상위 글 평균 경과일**: {result['avg_days']}일")
-                    
                     with col_R:
                         st.subheader("🎯 노출 확률 세부 점수")
                         bdf = pd.DataFrame({
@@ -444,14 +585,12 @@ with tab2:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
         keywords_text = st.text_area("키워드들 (한 줄에 하나씩)", placeholder="다이어트\n홈트레이닝\n간헐적단식", height=150)
-        
         if st.button("🔍 일괄 분석", type="primary", use_container_width=True, key="bulk_btn"):
             keywords = [k.strip() for k in keywords_text.split("\n") if k.strip()]
             if not keywords:
                 st.error("키워드를 입력해주세요")
             else:
-                progress = st.progress(0)
-                status = st.empty()
+                progress = st.progress(0); status = st.empty()
                 results = []
                 for i, kw in enumerate(keywords):
                     status.text(f"분석 중 ({i+1}/{len(keywords)}): {kw}")
@@ -466,12 +605,9 @@ with tab2:
                         df_data.append({"키워드": r.get("keyword", "?"), "에러": r["error"]})
                     else:
                         df_data.append({
-                            "키워드": r["keyword"],
-                            "월간검색": r["monthly_search"],
-                            "주간검색": r["weekly_search"],
-                            "일간검색": r["daily_search"],
-                            "블로그수": r["blog_count"],
-                            "경쟁": r["competition"],
+                            "키워드": r["keyword"], "월간검색": r["monthly_search"],
+                            "주간검색": r["weekly_search"], "일간검색": r["daily_search"],
+                            "블로그수": r["blog_count"], "경쟁": r["competition"],
                             "모바일%": f"{r['mobile_ratio']*100:.0f}%",
                             "노출점수": r["exposure_score"],
                             "난이도": f"{r['difficulty_emoji']} {r['difficulty']}",
@@ -479,7 +615,6 @@ with tab2:
                 df = pd.DataFrame(df_data)
                 st.success(f"✅ {len(results)}개 분석 완료")
                 st.dataframe(df, hide_index=True, use_container_width=True)
-                
                 csv = df.to_csv(index=False).encode("utf-8-sig")
                 st.download_button("📥 CSV 다운로드", csv,
                     file_name=f"keyword_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
@@ -487,27 +622,19 @@ with tab2:
 
 # ============ 탭3: 구글 트렌드 ============
 with tab3:
-    st.info("💡 구글 트렌드는 API 키가 필요 없습니다. 단, 한 번에 최대 5개 키워드까지 비교 가능.")
+    st.info("💡 구글 트렌드는 API 키가 필요 없습니다. 최대 5개 키워드 비교 가능.")
     
     col_a, col_b, col_c = st.columns([2, 1, 1])
     with col_a:
-        trend_keywords = st.text_input(
-            "키워드 (쉼표로 구분, 최대 5개)",
-            placeholder="예: 다이어트, 홈트레이닝, 간헐적단식",
-            key="trend_kw"
-        )
+        trend_keywords = st.text_input("키워드 (쉼표로 구분, 최대 5개)",
+                                       placeholder="예: 다이어트, 홈트레이닝, 간헐적단식", key="trend_kw")
     with col_b:
-        timeframe_label = st.selectbox(
-            "기간",
+        timeframe_label = st.selectbox("기간",
             ["지난 7일", "지난 1개월", "지난 3개월", "지난 12개월", "지난 5년"],
-            index=3,
-            key="trend_tf"
-        )
+            index=3, key="trend_tf")
         timeframe_map = {
-            "지난 7일": "now 7-d",
-            "지난 1개월": "today 1-m",
-            "지난 3개월": "today 3-m",
-            "지난 12개월": "today 12-m",
+            "지난 7일": "now 7-d", "지난 1개월": "today 1-m",
+            "지난 3개월": "today 3-m", "지난 12개월": "today 12-m",
             "지난 5년": "today 5-y",
         }
     with col_c:
@@ -521,66 +648,161 @@ with tab3:
         elif len(kws) > 5:
             st.error("최대 5개까지만 입력 가능합니다")
         else:
-            with st.spinner(f"구글 트렌드 조회 중... (최대 30초)"):
+            with st.spinner(f"구글 트렌드 조회 중..."):
                 result = get_google_trends(kws, timeframe_map[timeframe_label], geo_map[geo])
             
             if result.get("error"):
                 st.error(f"❌ {result['error']}")
-                st.caption("⚠️ 구글 트렌드는 가끔 일시적으로 차단될 수 있습니다. 1~2분 후 다시 시도해주세요.")
+                st.caption("⚠️ 구글이 일시적으로 차단했을 수 있어요. 1~2분 후 재시도")
             else:
                 st.success(f"✅ '{', '.join(result['keywords'])}' 분석 완료")
                 
-                # 1) 시간별 관심도 그래프
                 if "interest_over_time" in result:
-                    st.subheader("📈 시간별 관심도 (0~100 상대값)")
+                    st.subheader("📈 시간별 관심도 (0~100)")
                     st.line_chart(result["interest_over_time"], height=300)
-                    
-                    # 평균/최댓값 요약
                     iot = result["interest_over_time"]
                     summary_data = []
                     for kw in result["keywords"]:
                         if kw in iot.columns:
                             summary_data.append({
-                                "키워드": kw,
-                                "평균": round(iot[kw].mean(), 1),
-                                "최댓값": int(iot[kw].max()),
-                                "최솟값": int(iot[kw].min()),
+                                "키워드": kw, "평균": round(iot[kw].mean(), 1),
+                                "최댓값": int(iot[kw].max()), "최솟값": int(iot[kw].min()),
                                 "현재": int(iot[kw].iloc[-1]) if len(iot) > 0 else 0,
                             })
                     if summary_data:
                         st.dataframe(pd.DataFrame(summary_data), hide_index=True, use_container_width=True)
-                elif "interest_over_time_error" in result:
-                    st.warning(f"시간별 데이터 조회 실패: {result['interest_over_time_error']}")
                 
-                # 2) 지역별 관심도
                 if "interest_by_region" in result:
                     st.markdown("---")
                     st.subheader("🌏 지역별 관심도 TOP 10")
                     st.bar_chart(result["interest_by_region"], height=300)
                 
-                # 3) 연관 검색어
                 col_top, col_rise = st.columns(2)
                 with col_top:
                     if "related_top" in result:
                         st.subheader(f"🔝 '{result['keywords'][0]}' 인기 연관어")
                         st.dataframe(result["related_top"], hide_index=True, use_container_width=True)
-                
                 with col_rise:
                     if "related_rising" in result:
                         st.subheader(f"🚀 '{result['keywords'][0]}' 급상승 연관어")
                         st.dataframe(result["related_rising"], hide_index=True, use_container_width=True)
+
+# ============ 탭4: 네이버 데이터랩 (신규) ============
+with tab4:
+    if not st.session_state.api_configured:
+        st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
+    else:
+        st.info("""💡 키워드를 검색하는 사람들의 **연령/성별/기기** 비율을 분석합니다.  
+        ⚠️ 이 기능은 developers.naver.com에서 **'데이터랩(검색어 트렌드)' API 권한**이 추가되어 있어야 동작합니다.""")
+        
+        dl_keyword = st.text_input("분석할 키워드", placeholder="예: 다이어트", key="dl_kw")
+        
+        if st.button("📊 데이터랩 분석", type="primary", use_container_width=True, key="dl_btn"):
+            if not dl_keyword.strip():
+                st.error("키워드를 입력해주세요")
+            else:
+                with st.spinner("데이터랩 조회 중... (10~20초)"):
+                    result = analyze_demographics(dl_keyword, st.session_state.api_keys)
                 
-                # CSV 다운로드
-                if "interest_over_time" in result:
+                if result.get("error"):
+                    st.error(f"❌ {result['error']}")
+                else:
+                    st.success(f"✅ '{dl_keyword}' 인구통계 분석 완료 (최근 3개월 기준)")
+                    
+                    # 1) 시간별 추이
+                    if "time_trend" in result and result["time_trend"].get("results"):
+                        st.subheader("📈 일별 검색 추이")
+                        data_points = result["time_trend"]["results"][0].get("data", [])
+                        if data_points:
+                            trend_df = pd.DataFrame(data_points)
+                            trend_df["period"] = pd.to_datetime(trend_df["period"])
+                            trend_df = trend_df.set_index("period")
+                            trend_df.columns = [dl_keyword]
+                            st.line_chart(trend_df, height=250)
+                    
                     st.markdown("---")
-                    csv = result["interest_over_time"].to_csv(index=True).encode("utf-8-sig")
-                    st.download_button(
-                        "📥 시간별 데이터 CSV 다운로드",
-                        csv,
-                        file_name=f"google_trends_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                        mime="text/csv",
-                        use_container_width=True,
-                    )
+                    
+                    # 2) 연령대별
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.subheader("👥 연령대별 관심도")
+                        if result.get("by_age"):
+                            age_df = pd.DataFrame({
+                                "연령대": list(result["by_age"].keys()),
+                                "평균 관심도": list(result["by_age"].values()),
+                            })
+                            st.bar_chart(age_df.set_index("연령대"), height=250)
+                            
+                            # TOP 연령대 찾기
+                            top_age = max(result["by_age"], key=result["by_age"].get)
+                            st.caption(f"🎯 가장 많이 검색하는 연령대: **{top_age}**")
+                    
+                    # 3) 성별
+                    with col_b:
+                        st.subheader("⚧ 성별 관심도")
+                        if result.get("by_gender"):
+                            g_df = pd.DataFrame({
+                                "성별": list(result["by_gender"].keys()),
+                                "평균 관심도": list(result["by_gender"].values()),
+                            })
+                            st.bar_chart(g_df.set_index("성별"), height=250)
+                            top_g = max(result["by_gender"], key=result["by_gender"].get)
+                            st.caption(f"🎯 더 많이 검색: **{top_g}**")
+                    
+                    # 4) 기기별
+                    st.markdown("---")
+                    st.subheader("📱 기기별 관심도")
+                    if result.get("by_device"):
+                        d_df = pd.DataFrame({
+                            "기기": list(result["by_device"].keys()),
+                            "평균 관심도": list(result["by_device"].values()),
+                        })
+                        col_d1, col_d2 = st.columns([1, 2])
+                        with col_d1:
+                            st.dataframe(d_df, hide_index=True, use_container_width=True)
+                            top_d = max(result["by_device"], key=result["by_device"].get)
+                            st.caption(f"🎯 주 검색 기기: **{top_d}**")
+                        with col_d2:
+                            st.bar_chart(d_df.set_index("기기"), height=200)
+
+# ============ 탭5: 실시간 인기검색어 (신규) ============
+with tab5:
+    st.info("💡 지금 구글에서 가장 많이 검색되고 있는 인기 키워드입니다. (10분 캐시)")
+    
+    col_a, col_b = st.columns([1, 4])
+    with col_a:
+        rt_geo = st.selectbox("국가", ["한국", "미국", "일본"], index=0, key="rt_geo")
+        rt_geo_map = {"한국": "KR", "미국": "US", "일본": "JP"}
+    with col_b:
+        st.write("")
+        st.write("")
+        refresh = st.button("🔄 새로고침", key="rt_refresh")
+    
+    if refresh:
+        get_realtime_trending.clear()  # 캐시 삭제
+    
+    with st.spinner("실시간 인기 검색어 조회 중..."):
+        rt_result = get_realtime_trending(rt_geo_map[rt_geo])
+    
+    if rt_result.get("error"):
+        st.error(f"❌ {rt_result['error']}")
+        st.caption("⚠️ 구글이 일시 차단했을 수 있어요. 잠시 후 새로고침 해주세요.")
+    elif "trending" in rt_result:
+        st.success(f"🔥 {rt_geo} 실시간 인기 검색어 TOP {len(rt_result['trending'])}")
+        
+        col_left, col_right = st.columns([1, 1])
+        df = rt_result["trending"]
+        half = len(df) // 2 + len(df) % 2
+        
+        with col_left:
+            st.dataframe(df.iloc[:half], use_container_width=True)
+        with col_right:
+            if half < len(df):
+                st.dataframe(df.iloc[half:], use_container_width=True)
+        
+        # 클릭 가능한 키워드 (네이버 분석으로 연결 유도)
+        st.markdown("---")
+        st.caption("💡 위 키워드를 복사해서 '🎯 네이버 단일' 탭에서 분석해보세요!")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v4.0 | 네이버 API + 구글 트렌드")
+st.caption("💡 키워드 종합 분석기 v5.0 | 네이버 + 구글 + 데이터랩 + 실시간")
