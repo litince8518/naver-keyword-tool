@@ -1,7 +1,7 @@
 """
-키워드 종합 분석기 v5
+키워드 종합 분석기 v6
 ====================
-네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 구글 실시간 인기검색어
+네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
 """
 
 import streamlit as st
@@ -169,7 +169,7 @@ with st.sidebar:
 - 📋 네이버 일괄: 여러 개 한번에
 - 📈 구글 트렌드: 키워드 트렌드 비교
 - 📊 데이터랩: 연령/성별 분석
-- 🔥 실시간 인기: 지금 뜨는 키워드""")
+- 🔥 트렌드 발굴: 내 분야 뜨는 키워드""")
 
 
 # ================================================
@@ -484,35 +484,76 @@ def analyze_demographics(keyword, keys):
 
 
 # ================================================
-# 구글 실시간 인기검색어 (신규)
+# 트렌드 발굴 (신규) - 내 분야에서 뜨는 연관 키워드 찾기
 # ================================================
-@st.cache_data(ttl=600, show_spinner=False)  # 10분 캐시
-def get_realtime_trending(geo="KR"):
+def get_related_keywords_list(seed_keyword, keys, limit=20):
+    """검색광고 API로 연관 키워드 목록 + 월간검색량 수집"""
     try:
-        from pytrends.request import TrendReq
-    except ImportError:
-        return {"error": "pytrends 라이브러리가 필요합니다"}
-    
-    try:
-        pytrends = TrendReq(hl="ko-KR", tz=540, timeout=(10, 25), retries=2, backoff_factor=0.5)
-        
-        # 일일 인기 검색어 (가장 안정적)
-        try:
-            df = pytrends.trending_searches(pn="south_korea" if geo == "KR" 
-                                            else "united_states" if geo == "US"
-                                            else "japan" if geo == "JP"
-                                            else "south_korea")
-            if not df.empty:
-                df.columns = ["키워드"]
-                df.index = df.index + 1
-                df.index.name = "순위"
-                return {"trending": df, "error": None}
-        except Exception as e:
-            return {"error": f"실시간 인기 검색어 조회 실패: {str(e)[:200]}"}
-        
-        return {"error": "데이터 없음"}
+        r = requests.get(
+            "https://api.naver.com/keywordstool",
+            params={"hintKeywords": seed_keyword.replace(" ", ""), "showDetail": "1"},
+            headers=_ad_headers(keys, "GET", "/keywordstool"), timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except requests.exceptions.HTTPError as e:
+        code = e.response.status_code
+        if code == 403:
+            return {"error": "검색광고 API 권한 거부 (403) - 비즈머니 잔액 확인"}
+        return {"error": f"검색광고 API 오류 ({code})"}
     except Exception as e:
-        return {"error": f"구글 트렌드 연결 실패: {str(e)[:200]}"}
+        return {"error": f"검색광고 API 오류: {str(e)[:150]}"}
+
+    if not data.get("keywordList"):
+        return {"error": "연관 키워드를 찾을 수 없습니다"}
+
+    kws = []
+    for item in data["keywordList"][:limit]:
+        total = _parse(item.get("monthlyPcQcCnt", 0)) + _parse(item.get("monthlyMobileQcCnt", 0))
+        kws.append({
+            "키워드": item.get("relKeyword", ""),
+            "월간검색": total,
+            "경쟁": item.get("compIdx", ""),
+        })
+    return {"keywords": kws, "error": None}
+
+
+def get_trend_direction(keyword, keys):
+    """
+    데이터랩으로 키워드의 트렌드 방향 분석.
+    최근 3개월을 전반부/후반부로 나눠 비교 → 상승/하락률 계산.
+    """
+    today = datetime.now()
+    end_date = today.strftime("%Y-%m-%d")
+    start_date = (today - timedelta(days=90)).strftime("%Y-%m-%d")
+
+    groups = [{"groupName": keyword, "keywords": [keyword]}]
+    res = get_datalab_trend(groups, start_date, end_date, "week", keys)
+
+    if "error" in res or not res.get("results"):
+        return None
+
+    data_points = res["results"][0].get("data", [])
+    if len(data_points) < 4:
+        return None
+
+    ratios = [d["ratio"] for d in data_points]
+    half = len(ratios) // 2
+    first_half = ratios[:half]
+    second_half = ratios[half:]
+
+    avg_first = sum(first_half) / len(first_half) if first_half else 0
+    avg_second = sum(second_half) / len(second_half) if second_half else 0
+
+    if avg_first == 0:
+        change_pct = 100 if avg_second > 0 else 0
+    else:
+        change_pct = round((avg_second - avg_first) / avg_first * 100, 1)
+
+    return {
+        "change_pct": change_pct,
+        "recent_avg": round(avg_second, 1),
+    }
 
 
 # ================================================
@@ -520,7 +561,7 @@ def get_realtime_trending(geo="KR"):
 # ================================================
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🎯 네이버 단일", "📋 네이버 일괄", "📈 구글 트렌드",
-    "📊 데이터랩 (인구통계)", "🔥 실시간 인기"
+    "📊 데이터랩 (인구통계)", "🔥 트렌드 발굴"
 ])
 
 # ============ 탭1: 네이버 단일 ============
@@ -765,44 +806,118 @@ with tab4:
                         with col_d2:
                             st.bar_chart(d_df.set_index("기기"), height=200)
 
-# ============ 탭5: 실시간 인기검색어 (신규) ============
+# ============ 탭5: 트렌드 발굴 (신규) ============
 with tab5:
-    st.info("💡 지금 구글에서 가장 많이 검색되고 있는 인기 키워드입니다. (10분 캐시)")
-    
-    col_a, col_b = st.columns([1, 4])
-    with col_a:
-        rt_geo = st.selectbox("국가", ["한국", "미국", "일본"], index=0, key="rt_geo")
-        rt_geo_map = {"한국": "KR", "미국": "US", "일본": "JP"}
-    with col_b:
-        st.write("")
-        st.write("")
-        refresh = st.button("🔄 새로고침", key="rt_refresh")
-    
-    if refresh:
-        get_realtime_trending.clear()  # 캐시 삭제
-    
-    with st.spinner("실시간 인기 검색어 조회 중..."):
-        rt_result = get_realtime_trending(rt_geo_map[rt_geo])
-    
-    if rt_result.get("error"):
-        st.error(f"❌ {rt_result['error']}")
-        st.caption("⚠️ 구글이 일시 차단했을 수 있어요. 잠시 후 새로고침 해주세요.")
-    elif "trending" in rt_result:
-        st.success(f"🔥 {rt_geo} 실시간 인기 검색어 TOP {len(rt_result['trending'])}")
-        
-        col_left, col_right = st.columns([1, 1])
-        df = rt_result["trending"]
-        half = len(df) // 2 + len(df) % 2
-        
-        with col_left:
-            st.dataframe(df.iloc[:half], use_container_width=True)
-        with col_right:
-            if half < len(df):
-                st.dataframe(df.iloc[half:], use_container_width=True)
-        
-        # 클릭 가능한 키워드 (네이버 분석으로 연결 유도)
-        st.markdown("---")
-        st.caption("💡 위 키워드를 복사해서 '🎯 네이버 단일' 탭에서 분석해보세요!")
+    if not st.session_state.api_configured:
+        st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
+    else:
+        st.info("""💡 관심 키워드를 입력하면, **그 분야에서 요즘 뜨고 있는 연관 키워드**를 찾아드립니다.  
+        최근 3개월 트렌드를 분석해 상승률이 높은 순으로 보여줘요. (데이터랩 권한 필요)""")
+
+        col_a, col_b = st.columns([3, 1])
+        with col_a:
+            seed_kw = st.text_input("관심 분야 키워드", placeholder="예: 다이어트", key="trend_seed")
+        with col_b:
+            analyze_count = st.selectbox("분석 개수", [10, 15, 20], index=0, key="trend_count",
+                                         help="많을수록 정확하지만 느려집니다")
+
+        st.caption("⚠️ 연관 키워드마다 데이터랩을 조회하므로, 10개 기준 약 20~40초 걸립니다.")
+
+        if st.button("🔥 트렌드 발굴 시작", type="primary", use_container_width=True, key="trend_dig_btn"):
+            if not seed_kw.strip():
+                st.error("키워드를 입력해주세요")
+            else:
+                # 1) 연관 키워드 수집
+                with st.spinner("연관 키워드 수집 중..."):
+                    rel_result = get_related_keywords_list(seed_kw, st.session_state.api_keys, limit=analyze_count)
+
+                if rel_result.get("error"):
+                    st.error(f"❌ {rel_result['error']}")
+                else:
+                    keywords = rel_result["keywords"]
+                    st.caption(f"연관 키워드 {len(keywords)}개 발견. 트렌드 분석 시작...")
+
+                    # 2) 각 키워드의 트렌드 방향 분석
+                    progress = st.progress(0)
+                    status = st.empty()
+                    trend_data = []
+
+                    for i, kw_info in enumerate(keywords):
+                        kw = kw_info["키워드"]
+                        status.text(f"트렌드 분석 중 ({i+1}/{len(keywords)}): {kw}")
+                        direction = get_trend_direction(kw, st.session_state.api_keys)
+                        if direction:
+                            trend_data.append({
+                                "키워드": kw,
+                                "월간검색": kw_info["월간검색"],
+                                "경쟁": kw_info["경쟁"],
+                                "트렌드변화": direction["change_pct"],
+                                "최근관심도": direction["recent_avg"],
+                            })
+                        progress.progress((i + 1) / len(keywords))
+                        time.sleep(0.3)
+
+                    status.empty()
+                    progress.empty()
+
+                    if not trend_data:
+                        st.warning("트렌드 데이터를 가져오지 못했습니다. 데이터랩 권한을 확인해주세요.")
+                    else:
+                        # 상승률 순 정렬
+                        trend_data.sort(key=lambda x: x["트렌드변화"], reverse=True)
+
+                        st.success(f"✅ '{seed_kw}' 분야 트렌드 분석 완료")
+
+                        # 상승/하락 분류
+                        rising = [t for t in trend_data if t["트렌드변화"] > 5]
+                        falling = [t for t in trend_data if t["트렌드변화"] < -5]
+
+                        col_r, col_f = st.columns(2)
+                        with col_r:
+                            st.subheader("🔥 뜨는 키워드")
+                            if rising:
+                                for t in rising[:10]:
+                                    st.markdown(
+                                        f"**{t['키워드']}** &nbsp; "
+                                        f"📈 +{t['트렌드변화']}% &nbsp; "
+                                        f"(월 {t['월간검색']:,}회, 경쟁:{t['경쟁']})"
+                                    )
+                            else:
+                                st.caption("뚜렷하게 상승 중인 키워드가 없습니다")
+
+                        with col_f:
+                            st.subheader("❄️ 식는 키워드")
+                            if falling:
+                                for t in falling[:10]:
+                                    st.markdown(
+                                        f"**{t['키워드']}** &nbsp; "
+                                        f"📉 {t['트렌드변화']}% &nbsp; "
+                                        f"(월 {t['월간검색']:,}회)"
+                                    )
+                            else:
+                                st.caption("뚜렷하게 하락 중인 키워드가 없습니다")
+
+                        # 전체 테이블
+                        st.markdown("---")
+                        st.subheader("📋 전체 결과 (상승률 순)")
+                        df = pd.DataFrame(trend_data)
+                        df_display = df.copy()
+                        df_display["월간검색"] = df_display["월간검색"].apply(lambda x: f"{x:,}")
+                        df_display["트렌드변화"] = df_display["트렌드변화"].apply(
+                            lambda x: f"📈 +{x}%" if x > 5 else (f"📉 {x}%" if x < -5 else f"➡️ {x}%")
+                        )
+                        df_display.columns = ["키워드", "월간검색", "경쟁", "트렌드", "최근관심도"]
+                        st.dataframe(df_display, hide_index=True, use_container_width=True)
+
+                        # CSV 다운로드
+                        csv = df.to_csv(index=False).encode("utf-8-sig")
+                        st.download_button(
+                            "📥 CSV 다운로드", csv,
+                            file_name=f"trend_discovery_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                            mime="text/csv", use_container_width=True,
+                        )
+
+                        st.caption("💡 '뜨는 키워드'를 '🎯 네이버 단일' 탭에서 자세히 분석하면 블로그 주제로 딱!")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v5.0 | 네이버 + 구글 + 데이터랩 + 실시간")
+st.caption("💡 키워드 종합 분석기 v6.0 | 네이버 + 구글 + 데이터랩 + 트렌드 발굴")
