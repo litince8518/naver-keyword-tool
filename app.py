@@ -589,6 +589,62 @@ def analyze_demographics(keyword, keys):
 
 
 # ================================================
+# 세부 키워드(롱테일) 수집 - 네이버 자동완성
+# ================================================
+# 검색창 자동완성에서 "씨앗 + 뒤에 붙는 말"을 수집한다.
+# 비공식 엔드포인트라 막힐 수 있어, 실패 시 호출부에서 공식 연관어로 폴백한다.
+def get_autocomplete_keywords(seed):
+    seed = seed.strip()
+    if not seed:
+        return {"error": "빈 키워드", "keywords": []}
+    try:
+        r = requests.get(
+            "https://ac.search.naver.com/nx/ac",
+            params={"q": seed, "con": "1", "frm": "nv", "ans": "2",
+                    "r_format": "json", "st": "100"},
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.naver.com/"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        return {"error": f"자동완성 접근 실패: {str(e)[:120]}", "keywords": []}
+
+    words = []
+    for grp in data.get("items", []):
+        if not isinstance(grp, list):
+            continue
+        for it in grp:
+            if isinstance(it, list) and it and it[0]:
+                w = it[0].strip()
+                if w and w not in words:
+                    words.append(w)
+    if not words:
+        return {"error": "자동완성 결과 없음", "keywords": []}
+    return {"error": None, "keywords": words}
+
+
+def collect_sub_keywords(seed, keys, limit=20):
+    """
+    세부 키워드 수집. 자동완성 우선, 실패하면 공식 키워드도구 연관어로 폴백.
+    반환: {"source": "자동완성"|"공식 연관어", "keywords": [...], "error": None|str}
+    """
+    ac = get_autocomplete_keywords(seed)
+    if not ac["error"] and ac["keywords"]:
+        # 씨앗을 포함하는 세부 키워드 우선 (롱테일)
+        kws = ac["keywords"][:limit]
+        return {"source": "자동완성", "keywords": kws, "error": None}
+
+    # 폴백: 공식 키워드도구 연관어
+    rel = get_related_keywords_list(seed, keys, limit=limit)
+    if rel.get("error"):
+        return {"source": None, "keywords": [],
+                "error": f"자동완성·공식 모두 실패 ({rel['error']})"}
+    kws = [k["키워드"] for k in rel["keywords"] if k.get("키워드")]
+    return {"source": "공식 연관어(폴백)", "keywords": kws, "error": None}
+
+
+# ================================================
 # 트렌드 발굴 (신규) - 내 분야에서 뜨는 연관 키워드 찾기
 # ================================================
 def get_related_keywords_list(seed_keyword, keys, limit=20):
@@ -700,9 +756,9 @@ def get_trend_direction(keyword, keys):
 # ================================================
 # 메인 영역 - 탭 5개
 # ================================================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🎯 네이버 단일", "📋 네이버 일괄", "📈 구글 트렌드",
-    "📊 데이터랩 (인구통계)", "🔥 트렌드 발굴"
+    "📊 데이터랩 (인구통계)", "🔥 트렌드 발굴", "🪓 세부 키워드 발굴"
 ])
 
 # ============ 탭1: 네이버 단일 ============
@@ -1113,6 +1169,113 @@ with tab5:
                         )
 
                         st.caption("💡 '뜨는 키워드'를 '🎯 네이버 단일' 탭에서 자세히 분석하면 블로그 주제로 딱!")
+
+# ============ 탭6: 세부 키워드 발굴 ============
+with tab6:
+    if not st.session_state.api_configured:
+        st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
+    else:
+        st.info("""🪓 넓은 키워드(예: 갤럭시S26)를 넣으면, **그 뒤에 붙는 세부 키워드**(사전예약·출시일·케이스 등)를 찾아  
+        각각 합격 판정까지 해줍니다. 넓은 키워드는 입구로만 쓰고, 합격한 세부 키워드로 글을 쓰세요.""")
+
+        col_s1, col_s2 = st.columns([3, 1])
+        with col_s1:
+            sub_seed = st.text_input("넓은 키워드 (씨앗)", placeholder="예: 갤럭시S26", key="sub_seed")
+        with col_s2:
+            sub_stage = st.selectbox("블로그 상태", list(VERDICT_RULES.keys()), key="sub_stage")
+
+        sub_two_step = st.checkbox(
+            "⚡ 2단계로 빠르게 (먼저 수집만 → 고른 것만 정밀 분석)",
+            value=False, key="sub_two_step",
+            help="체크: 검색량만 빠르게 보고 직접 고른 키워드만 합격판정(빠름). 해제: 전체 자동 합격판정(느림).",
+        )
+
+        if st.button("🪓 세부 키워드 발굴", type="primary", use_container_width=True, key="sub_dig_btn"):
+            if not sub_seed.strip():
+                st.error("키워드를 입력해주세요")
+            else:
+                with st.spinner("세부 키워드 수집 중..."):
+                    sub_res = collect_sub_keywords(sub_seed, st.session_state.api_keys, limit=20)
+
+                if sub_res.get("error"):
+                    st.error(f"❌ {sub_res['error']}")
+                else:
+                    st.session_state["sub_keywords"] = sub_res["keywords"]
+                    st.session_state["sub_source"] = sub_res["source"]
+                    st.caption(f"수집 완료 ({sub_res['source']}): 세부 키워드 {len(sub_res['keywords'])}개")
+
+                    if not sub_two_step:
+                        # 전체 자동 분석 + 합격 판정
+                        progress = st.progress(0)
+                        status = st.empty()
+                        rows = []
+                        kws = sub_res["keywords"]
+                        for i, kw in enumerate(kws):
+                            status.text(f"분석 중 ({i+1}/{len(kws)}): {kw}")
+                            r = analyze_keyword(kw, st.session_state.api_keys)
+                            if not r.get("error"):
+                                v = judge_keyword(r, sub_stage)
+                                rows.append({
+                                    "키워드": kw,
+                                    "판정": f"{v['emoji']} {v['grade']}",
+                                    "_점수": v["points"],
+                                    "월간검색": r["monthly_search"],
+                                    "경쟁글": r["blog_count"],
+                                    "경쟁강도": r["competition"],
+                                    "노출점수": r["exposure_score"],
+                                })
+                            progress.progress((i + 1) / len(kws))
+                            time.sleep(0.2)
+                        status.empty(); progress.empty()
+                        st.session_state["sub_rows"] = rows
+
+        # 결과 표시 (전체 분석 결과)
+        if st.session_state.get("sub_rows"):
+            rows = st.session_state["sub_rows"]
+            rows_sorted = sorted(rows, key=lambda x: x["_점수"], reverse=True)
+            pass_n = sum(1 for r in rows if "합격" in r["판정"])
+            st.success(f"✅ 분석 완료 — 합격 {pass_n}개 / 전체 {len(rows)}개")
+
+            df = pd.DataFrame(rows_sorted)
+            df_show = df.drop(columns=["_점수"]).copy()
+            df_show["월간검색"] = df_show["월간검색"].apply(lambda x: f"{x:,}")
+            df_show["경쟁글"] = df_show["경쟁글"].apply(lambda x: f"{x:,}")
+            st.dataframe(df_show, hide_index=True, use_container_width=True)
+
+            csv = df.drop(columns=["_점수"]).to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                "📥 합격 목록 CSV 다운로드 (주간 글감)", csv,
+                file_name=f"sub_keywords_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv", use_container_width=True,
+            )
+            st.caption("💡 합격한 키워드를 '🎯 네이버 단일' 탭에 넣으면 blog_ai_writer로 바로 보낼 수 있어요.")
+
+        # 2단계 모드: 수집된 키워드에서 직접 고르기
+        elif st.session_state.get("sub_keywords") and st.session_state.get("sub_two_step"):
+            st.markdown("---")
+            st.subheader("⚡ 정밀 분석할 키워드 고르기")
+            picked = st.multiselect(
+                "합격 판정할 키워드를 고르세요 (적게 고를수록 빠름)",
+                st.session_state["sub_keywords"],
+                key="sub_picked",
+            )
+            if st.button("선택한 키워드 정밀 분석", key="sub_analyze_picked"):
+                rows = []
+                progress = st.progress(0)
+                for i, kw in enumerate(picked):
+                    r = analyze_keyword(kw, st.session_state.api_keys)
+                    if not r.get("error"):
+                        v = judge_keyword(r, st.session_state["sub_stage"])
+                        rows.append({
+                            "키워드": kw, "판정": f"{v['emoji']} {v['grade']}", "_점수": v["points"],
+                            "월간검색": r["monthly_search"], "경쟁글": r["blog_count"],
+                            "경쟁강도": r["competition"], "노출점수": r["exposure_score"],
+                        })
+                    progress.progress((i + 1) / max(1, len(picked)))
+                    time.sleep(0.2)
+                progress.empty()
+                st.session_state["sub_rows"] = rows
+                st.rerun()
 
 st.markdown("---")
 st.caption("💡 키워드 종합 분석기 v6.0 | 네이버 + 구글 + 데이터랩 + 트렌드 발굴")
