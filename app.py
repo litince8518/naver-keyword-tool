@@ -682,6 +682,86 @@ def scan_category_trends(pool, keys, top_n=8):
 
 
 # ================================================
+# 메인 대시보드용 카테고리별 뉴스 검색어
+# ================================================
+# blog_ai_writer 카테고리(CAT-A~L)와 일치. 각 카테고리의 뉴스 검색어로
+# 네이버 뉴스 API를 호출해 최신 이슈 제목을 카드에 띄운다.
+CATEGORY_NEWS_QUERIES = {
+    "CAT-A · IT·컴퓨터·스마트폰": ["스마트폰", "갤럭시", "아이폰"],
+    "CAT-B · 경제·재테크·절약": ["재테크", "금리", "주식"],
+    "CAT-C · 정보·생활정보·꿀팁": ["생활정보", "정부지원", "민원"],
+    "CAT-D · 육아·교육": ["육아", "교육", "어린이집"],
+    "CAT-E · 건강·운동·다이어트": ["건강", "다이어트", "운동"],
+    "CAT-F · 뷰티·패션": ["패션", "뷰티", "화장품"],
+    "CAT-G · 여행·맛집": ["여행", "맛집", "국내여행"],
+    "CAT-H · 일상·감성·에세이": ["라이프스타일", "취미", "트렌드"],
+    "CAT-I · 문화·예술·영화·음악": ["영화", "드라마", "넷플릭스"],
+    "CAT-S · 스포츠·경기·선수": ["스포츠", "축구", "야구"],
+    "CAT-J · 반려동물·펫": ["반려동물", "강아지", "고양이"],
+    "CAT-K · AI·자동화·툴": ["인공지능", "챗GPT", "AI"],
+    "CAT-L · 부동산·청약·투자": ["부동산", "청약", "아파트"],
+}
+
+
+def _strip_tags(text):
+    """뉴스 제목의 <b> 태그, HTML 엔티티 제거"""
+    import re, html
+    text = re.sub(r"<[^>]+>", "", text)
+    return html.unescape(text).strip()
+
+
+def search_news(query, keys, display=10, sort="date"):
+    """
+    네이버 뉴스 검색 API. 키워드로 최신 뉴스 제목·링크를 가져온다.
+    sort='date' 최신순, 'sim' 정확도순.
+    반환: [{"title","link","pubDate"}, ...]
+    """
+    try:
+        r = requests.get(
+            "https://openapi.naver.com/v1/search/news.json",
+            params={"query": query, "display": display, "sort": sort},
+            headers={
+                "X-Naver-Client-Id": keys["client_id"],
+                "X-Naver-Client-Secret": keys["client_secret"],
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        items = r.json().get("items", [])
+        out = []
+        seen = set()
+        for it in items:
+            title = _strip_tags(it.get("title", ""))
+            if title and title not in seen:
+                seen.add(title)
+                out.append({
+                    "title": title,
+                    "link": it.get("originallink") or it.get("link", ""),
+                    "pubDate": it.get("pubDate", ""),
+                })
+        return {"error": None, "news": out}
+    except Exception as e:
+        return {"error": f"뉴스 API 오류: {str(e)[:120]}", "news": []}
+
+
+def fetch_category_news(category, keys, per_query=6):
+    """카테고리의 검색어들로 뉴스를 모아 중복 제거 후 반환."""
+    queries = CATEGORY_NEWS_QUERIES.get(category, [])
+    all_news = []
+    seen = set()
+    for q in queries:
+        res = search_news(q, keys, display=per_query, sort="date")
+        if res["error"]:
+            continue
+        for n in res["news"]:
+            if n["title"] not in seen:
+                seen.add(n["title"])
+                all_news.append(n)
+        time.sleep(0.15)
+    return all_news
+
+
+# ================================================
 # 세부 키워드(롱테일) 수집 - 네이버 자동완성
 # ================================================
 # 검색창 자동완성에서 "씨앗 + 뒤에 붙는 말"을 수집한다.
@@ -859,30 +939,30 @@ with tab_home:
     if not st.session_state.api_configured:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
-        st.info("""🏠 카테고리별 **급상승 키워드**를 보여줍니다. 각 카드의 '갱신'을 누르면  
-        그 분야에서 최근 뜨고 있는 키워드를 데이터랩으로 분석해 띄웁니다. (누를 때만 분석해서 빠릅니다)""")
+        st.info("""🏠 카테고리별 **지금 뜨는 뉴스·이슈**를 보여줍니다. 카드에서 마음에 드는 이슈를 보면,  
+        그 키워드를 '🎯 네이버 단일'이나 '🪓 세부 키워드 발굴' 탭에 넣어 글감으로 발전시키세요.""")
 
-        if "dash_cache" not in st.session_state:
-            st.session_state["dash_cache"] = {}
+        if "news_cache" not in st.session_state:
+            st.session_state["news_cache"] = {}
 
-        cat_names = list(CATEGORY_POOLS.keys())
+        cat_names = list(CATEGORY_NEWS_QUERIES.keys())
         chosen = st.multiselect(
-            "볼 카테고리 선택 (2~3개 추천 · 많이 고르면 느려집니다)",
+            "볼 카테고리 선택 (2~3개 추천)",
             cat_names,
             default=cat_names[:1],
-            key="dash_chosen",
+            key="news_chosen",
         )
 
-        if st.button("🔄 선택한 카테고리 갱신", type="primary", use_container_width=True, key="dash_refresh"):
+        if st.button("🔄 선택한 카테고리 뉴스 가져오기", type="primary", use_container_width=True, key="news_refresh"):
             if not chosen:
                 st.warning("카테고리를 하나 이상 선택해주세요")
             else:
                 prog = st.progress(0)
                 status = st.empty()
                 for i, cat in enumerate(chosen):
-                    status.text(f"급상승 분석 중 ({i+1}/{len(chosen)}): {cat}")
-                    hot = scan_category_trends(CATEGORY_POOLS[cat], st.session_state.api_keys, top_n=8)
-                    st.session_state["dash_cache"][cat] = hot
+                    status.text(f"뉴스 가져오는 중 ({i+1}/{len(chosen)}): {cat}")
+                    news = fetch_category_news(cat, st.session_state.api_keys, per_query=6)
+                    st.session_state["news_cache"][cat] = news
                     prog.progress((i + 1) / len(chosen))
                 status.empty(); prog.empty()
 
@@ -893,18 +973,20 @@ with tab_home:
                 for ci, cat in enumerate(chosen[row_start:row_start + 2]):
                     with cols[ci]:
                         with st.container(border=True):
-                            st.markdown(f"**{cat}**")
-                            hot = st.session_state["dash_cache"].get(cat)
-                            if hot is None:
-                                st.caption("위 '갱신'을 누르면 급상승 키워드가 표시됩니다")
-                            elif not hot:
-                                st.caption("지금 뚜렷하게 상승 중인 키워드가 없습니다")
+                            news = st.session_state["news_cache"].get(cat)
+                            count = len(news) if news else 0
+                            st.markdown(f"**{cat}**  ·  {count}건")
+                            if news is None:
+                                st.caption("위 버튼을 누르면 이 분야 최신 뉴스가 표시됩니다")
+                            elif not news:
+                                st.caption("가져온 뉴스가 없습니다")
                             else:
-                                for h in hot:
-                                    pct = h["change_pct"]
-                                    arrow = "📈" if pct > 5 else ("➡️" if pct > -5 else "📉")
-                                    st.write(f"{arrow} {h['키워드']}  ({'+' if pct>0 else ''}{pct}%)")
-                                st.caption("💡 '🎯 네이버 단일' 탭에서 분석 → blog_ai_writer로")
+                                for n in news:
+                                    if n["link"]:
+                                        st.markdown(f"• [{n['title']}]({n['link']})")
+                                    else:
+                                        st.write(f"• {n['title']}")
+                                st.caption("💡 쓸 이슈의 키워드를 '🎯 네이버 단일'·'🪓 세부 키워드 발굴'에 넣어보세요")
 
 # ============ 탭1: 네이버 단일 ============
 with tab1:
