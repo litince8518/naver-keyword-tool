@@ -1012,7 +1012,10 @@ with tab5:
                         df_display["트렌드변화"] = df_display["트렌드변화"].apply(
                             lambda x: f"📈 +{x}%" if x > 5 else (f"📉 {x}%" if x < -5 else f"➡️ {x}%")
                         )
-                        df_display.columns = ["키워드", "월간검색", "경쟁", "트렌드", "최근관심도"]
+                        df_display = df_display.rename(columns={"트렌드변화": "트렌드"})
+                        # 보기 좋은 순서로 정렬 (관련 열이 있으면 포함)
+                        col_order = [c for c in ["키워드", "관련", "월간검색", "경쟁", "트렌드", "최근관심도"] if c in df_display.columns]
+                        df_display = df_display[col_order]
                         st.dataframe(df_display, hide_index=True, use_container_width=True)
 
                         # CSV 다운로드
