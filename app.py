@@ -338,6 +338,74 @@ BLOG_PROFILES = {
     "(자동 감지)": {"cat_hint": "", "intent_hint": ""},
 }
 
+# ================================================
+# 신규/기존 블로그별 키워드 합격 판정
+# ================================================
+# 기준 4개(블로그 문서 수·경쟁 강도·월간 검색량·노출 점수)를
+# 블로그 상태에 따라 다르게 적용해 등급 + 이유를 돌려준다.
+VERDICT_RULES = {
+    "신규 블로그 (ioneteam 등)": {
+        "doc_good": 10000, "doc_ok": 30000,      # 문서 수: 1만 미만 좋음 / 3만 미만 보통
+        "search_low": 1000, "search_high": 30000, # 검색량: 1천~3만이 적당
+    },
+    "기존 블로그 (reviewheart 등)": {
+        "doc_good": 30000, "doc_ok": 80000,
+        "search_low": 1000, "search_high": 100000,
+    },
+}
+
+def judge_keyword(result, blog_stage="신규 블로그 (ioneteam 등)"):
+    """키워드가 해당 블로그 단계에 적합한지 등급 + 이유로 판정."""
+    rule = VERDICT_RULES.get(blog_stage, VERDICT_RULES["신규 블로그 (ioneteam 등)"])
+    doc = result.get("blog_count", 0) or 0
+    comp = result.get("competition", "")
+    search = result.get("monthly_search", 0) or 0
+    score = result.get("exposure_score", 0) or 0
+
+    reasons = []
+    points = 0  # 합격 점수 (높을수록 좋음)
+
+    # 1) 블로그 문서 수 (경쟁자 수) — 가장 중요
+    if doc < rule["doc_good"]:
+        points += 2; reasons.append(f"✅ 경쟁 글 {doc:,}개로 적음")
+    elif doc < rule["doc_ok"]:
+        points += 1; reasons.append(f"🟡 경쟁 글 {doc:,}개로 보통")
+    else:
+        points -= 1; reasons.append(f"🔴 경쟁 글 {doc:,}개로 많음 (이기기 어려움)")
+
+    # 2) 경쟁 강도
+    if comp == "낮음":
+        points += 1; reasons.append("✅ 경쟁 강도 낮음")
+    elif comp == "높음":
+        points -= 1; reasons.append("🔴 경쟁 강도 높음")
+    else:
+        reasons.append("🟡 경쟁 강도 중간")
+
+    # 3) 검색량 적정 구간
+    if search < rule["search_low"]:
+        reasons.append(f"🟡 검색량 {search:,}회로 적음 (수요 약함)")
+    elif search <= rule["search_high"]:
+        points += 1; reasons.append(f"✅ 검색량 {search:,}회로 적당")
+    else:
+        reasons.append(f"🟡 검색량 {search:,}회로 큼 (넓은 키워드, 경쟁↑)")
+
+    # 4) 노출 점수 참고
+    if score >= 55:
+        points += 1; reasons.append(f"✅ 노출 점수 {score}점 (쉬움)")
+    elif score < 35:
+        points -= 1; reasons.append(f"🔴 노출 점수 {score}점 (어려움)")
+
+    # 등급 결정
+    if points >= 4:
+        grade, emoji = "합격", "🟢"
+    elif points >= 1:
+        grade, emoji = "보통", "🟡"
+    else:
+        grade, emoji = "불합격", "🔴"
+
+    return {"grade": grade, "emoji": emoji, "reasons": reasons, "points": points}
+
+
 def build_seed_text(result, blog_profile="(자동 감지)"):
     kw = result.get("keyword", "")
     rel = result.get("related_keywords", []) or []
@@ -699,6 +767,24 @@ with tab1:
         # ===== 다리: blog_ai_writer 연결 =====
         if st.session_state.get("last_result"):
             lr = st.session_state["last_result"]
+            st.markdown("---")
+            st.subheader("🎯 이 키워드, 내 블로그에 쓸까?")
+            blog_stage = st.radio(
+                "블로그 상태를 고르면 그 기준으로 판정합니다",
+                list(VERDICT_RULES.keys()),
+                horizontal=True,
+                key="verdict_stage",
+            )
+            verdict = judge_keyword(lr, blog_stage)
+            if verdict["grade"] == "합격":
+                st.success(f"{verdict['emoji']} **{verdict['grade']}** — 이 블로그에 쓰기 좋은 키워드예요")
+            elif verdict["grade"] == "보통":
+                st.warning(f"{verdict['emoji']} **{verdict['grade']}** — 써도 되지만 더 좋은 키워드가 있을 수 있어요")
+            else:
+                st.error(f"{verdict['emoji']} **{verdict['grade']}** — 이 블로그엔 추천하지 않아요 (더 구체적인 키워드로)")
+            for r in verdict["reasons"]:
+                st.write(f"- {r}")
+
             st.markdown("---")
             st.subheader("✍️ blog_ai_writer로 보내기")
             st.caption(
