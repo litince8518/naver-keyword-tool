@@ -319,6 +319,43 @@ def analyze_keyword(keyword, keys):
 
 
 # ================================================
+# blog_ai_writer 연결용 시드 텍스트 생성 (다리)
+# ================================================
+# blog_ai_writer의 자막칸(refText)은 100자 이상 텍스트를 받아야
+# detectCategory/detectIntent가 작동한다. 분석 결과를 그 칸에 붙일
+# 자연스러운 시드 문단으로 변환해준다. blog_ai_writer는 수정하지 않는다.
+
+# 블로그별 카테고리 신호 단어 (detectCategory 적중률을 높이기 위한 힌트)
+BLOG_PROFILES = {
+    "ioneteam (IT 문제해결)": {
+        "cat_hint": "스마트폰 갤럭시 아이폰 노트북 앱 설정 오류 해결 방법",
+        "intent_hint": "방법 해결 설정 오류 사용법",
+    },
+    "reviewheart (육아·정책·리뷰)": {
+        "cat_hint": "육아 아이 정책 지원금 신청 혜택 후기 추천",
+        "intent_hint": "신청 후기 비교 추천 방법",
+    },
+    "(자동 감지)": {"cat_hint": "", "intent_hint": ""},
+}
+
+def build_seed_text(result, blog_profile="(자동 감지)"):
+    kw = result.get("keyword", "")
+    rel = result.get("related_keywords", []) or []
+    rel_words = [r.get("키워드", "") for r in rel[:6] if r.get("키워드")]
+    prof = BLOG_PROFILES.get(blog_profile, BLOG_PROFILES["(자동 감지)"])
+
+    rel_str = ", ".join(rel_words) if rel_words else kw
+    seed = (
+        f"{kw}에 대해 검색하는 사람들이 많습니다. "
+        f"{kw} 관련해서 함께 많이 찾는 키워드로는 {rel_str} 등이 있습니다. "
+        f"이 글에서는 {kw}의 핵심 내용을 정리하고, "
+        f"{prof['intent_hint']}을 중심으로 자세히 다룹니다. "
+        f"{prof['cat_hint']}"
+    ).strip()
+    return seed
+
+
+# ================================================
 # 구글 트렌드
 # ================================================
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -619,6 +656,27 @@ with tab1:
                         rdf = pd.DataFrame(result["related_keywords"])
                         rdf["월간검색"] = rdf["월간검색"].apply(lambda x: f"{x:,}")
                         st.dataframe(rdf, hide_index=True, use_container_width=True)
+
+                    # 분석 결과를 세션에 저장 (다리 블록이 재실행돼도 유지)
+                    st.session_state["last_result"] = result
+
+        # ===== 다리: blog_ai_writer 연결 =====
+        if st.session_state.get("last_result"):
+            lr = st.session_state["last_result"]
+            st.markdown("---")
+            st.subheader("✍️ blog_ai_writer로 보내기")
+            st.caption(
+                f"'{lr['keyword']}' 분석 결과를 blog_ai_writer 자막칸에 붙일 텍스트로 만듭니다. "
+                "복사 → blog_ai_writer 자막칸에 붙여넣으면 키워드·카테고리·검색의도가 자동 설정됩니다."
+            )
+            blog_choice = st.selectbox(
+                "어느 블로그용인가요?",
+                list(BLOG_PROFILES.keys()),
+                key="bridge_blog_choice",
+            )
+            seed_text = build_seed_text(lr, blog_choice)
+            st.text_area("📋 복사할 텍스트 (아래 내용을 자막칸에 붙여넣기)", seed_text, height=140, key="bridge_seed")
+            st.caption("💡 blog_ai_writer에서 카테고리·의도가 다르게 잡히면 그 칸만 직접 바꾸면 됩니다.")
 
 # ============ 탭2: 네이버 일괄 ============
 with tab2:
