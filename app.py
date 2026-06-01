@@ -555,6 +555,42 @@ def get_related_keywords_list(seed_keyword, keys, limit=20):
     return {"keywords": kws, "error": None}
 
 
+def _relevance_score(seed, kw):
+    """씨앗과 연관어의 관련도 점수. 높을수록 관련 높음."""
+    seed_clean = seed.replace(" ", "")
+    kw_clean = kw.replace(" ", "")
+    # 1) 씨앗 단어를 통째로 포함하면 가장 높은 점수
+    if seed_clean and seed_clean in kw_clean:
+        return 100 + len(seed_clean)
+    # 2) 씨앗의 글자가 얼마나 겹치는지 (부분 관련)
+    overlap = sum(1 for ch in set(seed_clean) if ch in kw_clean)
+    return overlap
+
+
+def filter_related_keywords(seed, keywords, strict=True):
+    """
+    strict=True  : 씨앗 단어를 포함하는 연관어만 남김 (옵션 1)
+    strict=False : 안 자르고 관련도 순으로 정렬, 관련 낮은 건 표시 (옵션 2)
+    """
+    scored = []
+    for kw_info in keywords:
+        kw = kw_info.get("키워드", "")
+        score = _relevance_score(seed, kw)
+        item = dict(kw_info)
+        item["_rel"] = score
+        item["관련"] = "관련" if score >= 100 else "관련낮음"
+        scored.append(item)
+
+    if strict:
+        kept = [x for x in scored if x["_rel"] >= 100]
+        # 너무 적게 남으면(2개 미만) 안전하게 관련도 상위로 보강
+        if len(kept) < 2:
+            kept = sorted(scored, key=lambda x: x["_rel"], reverse=True)[:max(2, len(scored)//2)]
+        return kept
+    else:
+        return sorted(scored, key=lambda x: x["_rel"], reverse=True)
+
+
 def get_trend_direction(keyword, keys):
     """
     데이터랩으로 키워드의 트렌드 방향 분석.
@@ -881,6 +917,12 @@ with tab5:
 
         st.caption("⚠️ 연관 키워드마다 데이터랩을 조회하므로, 10개 기준 약 20~40초 걸립니다.")
 
+        only_related = st.checkbox(
+            "🔲 씨앗 관련 키워드만 보기 (체크 해제 시 전체를 관련도 순으로 표시)",
+            value=True, key="trend_only_related",
+            help="체크: 씨앗 단어를 포함한 연관어만 남깁니다 (세탁기 같은 잡음 제거). 해제: 다 보여주되 관련 높은 순으로 정렬합니다.",
+        )
+
         if st.button("🔥 트렌드 발굴 시작", type="primary", use_container_width=True, key="trend_dig_btn"):
             if not seed_kw.strip():
                 st.error("키워드를 입력해주세요")
@@ -893,7 +935,12 @@ with tab5:
                     st.error(f"❌ {rel_result['error']}")
                 else:
                     keywords = rel_result["keywords"]
-                    st.caption(f"연관 키워드 {len(keywords)}개 발견. 트렌드 분석 시작...")
+                    # 씨앗 관련도 필터 적용 (체크 시 엄격, 해제 시 관련도 순 정렬)
+                    keywords = filter_related_keywords(seed_kw, keywords, strict=only_related)
+                    if only_related:
+                        st.caption(f"연관 키워드 {len(keywords)}개 (씨앗 '{seed_kw}' 관련만). 트렌드 분석 시작...")
+                    else:
+                        st.caption(f"연관 키워드 {len(keywords)}개 (관련도 순). 트렌드 분석 시작...")
 
                     # 2) 각 키워드의 트렌드 방향 분석
                     progress = st.progress(0)
@@ -909,6 +956,7 @@ with tab5:
                                 "키워드": kw,
                                 "월간검색": kw_info["월간검색"],
                                 "경쟁": kw_info["경쟁"],
+                                "관련": kw_info.get("관련", ""),
                                 "트렌드변화": direction["change_pct"],
                                 "최근관심도": direction["recent_avg"],
                             })
