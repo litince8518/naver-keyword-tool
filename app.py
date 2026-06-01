@@ -589,6 +589,99 @@ def analyze_demographics(keyword, keys):
 
 
 # ================================================
+# 메인 대시보드용 카테고리별 키워드 풀
+# ================================================
+# blog_ai_writer 카테고리(CAT-A~L)와 일치. 각 카드의 '갱신' 버튼을 누르면
+# 해당 풀의 키워드 추세를 데이터랩으로 훑어 급상승만 보여준다.
+CATEGORY_POOLS = {
+    "CAT-A · IT·컴퓨터·스마트폰": [
+        "아이폰", "갤럭시", "갤럭시S26", "노트북", "윈도우", "맥북", "에어팟", "갤럭시워치",
+        "아이패드", "태블릿", "무선이어폰", "모니터", "그래픽카드", "SSD", "공유기",
+        "블루투스", "USB", "충전기", "키보드", "웹캠",
+    ],
+    "CAT-AB · IT + 경제·재테크": [
+        "스마트폰 보조금", "통신비 절약", "알뜰폰", "휴대폰 성지", "자급제폰",
+        "데이터 무제한", "인터넷 가입", "결합할인", "중고폰 시세", "리퍼폰",
+    ],
+    "CAT-B · 경제·재테크·절약": [
+        "주식", "ETF", "배당주", "적금", "예금금리", "연금저축", "ISA", "청약통장",
+        "환율", "금값", "비트코인", "퇴직연금", "절세", "신용점수", "대출금리",
+    ],
+    "CAT-C · 정보·생활정보·꿀팁": [
+        "전기요금", "도시가스", "주민등록등본", "민원24", "정부24", "국세청 환급",
+        "자동차세", "재산세", "건강보험료", "실업급여", "전입신고", "공동인증서",
+        "여권 발급", "운전면허 갱신", "쓰레기 종량제",
+    ],
+    "CAT-D · 육아·교육": [
+        "이유식", "어린이집", "유치원", "분유", "기저귀", "아기 수면교육",
+        "돌잔치", "유아 영어", "학습지", "초등 입학", "받아쓰기", "구구단",
+        "어린이 영양제", "예방접종", "아기 발달",
+    ],
+    "CAT-E · 건강·운동·다이어트": [
+        "다이어트", "홈트레이닝", "단백질", "유산소", "헬스", "필라테스",
+        "간헐적단식", "혈압", "콜레스테롤", "영양제", "비타민", "단식",
+        "스트레칭", "체지방", "근력운동",
+    ],
+    "CAT-F · 뷰티·패션": [
+        "선크림", "쿠션", "립밤", "여름 코디", "원피스", "운동화",
+        "향수", "탈모 샴푸", "헤어스타일", "네일", "다운펌", "기초화장품",
+    ],
+    "CAT-G · 여행·맛집": [
+        "제주도 여행", "강릉 여행", "부산 맛집", "캠핑", "글램핑", "호캉스",
+        "당일치기", "국내여행", "여름 휴가지", "물놀이", "계곡", "워터파크",
+        "드라이브 코스", "펜션", "야경 명소",
+    ],
+    "CAT-H · 일상·감성·에세이": [
+        "오늘의 날씨", "주말 나들이", "취미", "독서", "홈카페", "반신욕",
+        "미니멀라이프", "정리수납", "플랜테리어", "캘리그라피",
+    ],
+    "CAT-I · 문화·예술·영화·음악": [
+        "넷플릭스 추천", "드라마 추천", "영화 추천", "OTT", "디즈니플러스",
+        "웹툰", "전시회", "콘서트", "뮤지컬", "신곡",
+    ],
+    "CAT-S · 스포츠·경기·선수": [
+        "손흥민", "이강인", "KBO", "프리미어리그", "챔피언스리그", "월드컵",
+        "야구 순위", "축구 중계", "골프", "마라톤", "올림픽", "MLB",
+    ],
+    "CAT-J · 반려동물·펫": [
+        "강아지 사료", "고양이 사료", "강아지 훈련", "반려동물 보험", "펫호텔",
+        "강아지 예방접종", "고양이 화장실", "반려견 등록", "강아지 미용", "펫푸드",
+    ],
+    "CAT-K · AI·자동화·툴": [
+        "챗GPT", "구글 제미나이", "AI 그림", "프롬프트", "AI 영상", "노션",
+        "엑셀 함수", "구글 스프레드시트", "캔바", "미드저니", "클로드", "AI 글쓰기",
+    ],
+    "CAT-L · 부동산·청약·투자": [
+        "아파트 청약", "전세 대출", "주택담보대출", "분양", "재건축", "부동산 세금",
+        "전월세 신고", "임대차", "디딤돌대출", "보금자리론", "신생아 특례", "오피스텔",
+    ],
+}
+
+
+def scan_category_trends(pool, keys, top_n=8):
+    """
+    카테고리 풀의 키워드들을 데이터랩으로 훑어 급상승 순으로 정렬.
+    반환: [{"키워드","change_pct","recent_avg"}, ...] 상승률 높은 순.
+    """
+    results = []
+    for kw in pool:
+        try:
+            d = get_trend_direction(kw, keys)
+            if d:
+                results.append({
+                    "키워드": kw,
+                    "change_pct": d["change_pct"],
+                    "recent_avg": d["recent_avg"],
+                })
+        except Exception:
+            pass
+        time.sleep(0.15)
+    # 상승률 높은 순
+    results.sort(key=lambda x: x["change_pct"], reverse=True)
+    return results[:top_n]
+
+
+# ================================================
 # 세부 키워드(롱테일) 수집 - 네이버 자동완성
 # ================================================
 # 검색창 자동완성에서 "씨앗 + 뒤에 붙는 말"을 수집한다.
@@ -756,10 +849,62 @@ def get_trend_direction(keyword, keys):
 # ================================================
 # 메인 영역 - 탭 5개
 # ================================================
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "🎯 네이버 단일", "📋 네이버 일괄", "📈 구글 트렌드",
+tab_home, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "🏠 트렌드 대시보드", "🎯 네이버 단일", "📋 네이버 일괄", "📈 구글 트렌드",
     "📊 데이터랩 (인구통계)", "🔥 트렌드 발굴", "🪓 세부 키워드 발굴"
 ])
+
+# ============ 탭: 트렌드 대시보드 (메인) ============
+with tab_home:
+    if not st.session_state.api_configured:
+        st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
+    else:
+        st.info("""🏠 카테고리별 **급상승 키워드**를 보여줍니다. 각 카드의 '갱신'을 누르면  
+        그 분야에서 최근 뜨고 있는 키워드를 데이터랩으로 분석해 띄웁니다. (누를 때만 분석해서 빠릅니다)""")
+
+        if "dash_cache" not in st.session_state:
+            st.session_state["dash_cache"] = {}
+
+        cat_names = list(CATEGORY_POOLS.keys())
+        chosen = st.multiselect(
+            "볼 카테고리 선택 (2~3개 추천 · 많이 고르면 느려집니다)",
+            cat_names,
+            default=cat_names[:1],
+            key="dash_chosen",
+        )
+
+        if st.button("🔄 선택한 카테고리 갱신", type="primary", use_container_width=True, key="dash_refresh"):
+            if not chosen:
+                st.warning("카테고리를 하나 이상 선택해주세요")
+            else:
+                prog = st.progress(0)
+                status = st.empty()
+                for i, cat in enumerate(chosen):
+                    status.text(f"급상승 분석 중 ({i+1}/{len(chosen)}): {cat}")
+                    hot = scan_category_trends(CATEGORY_POOLS[cat], st.session_state.api_keys, top_n=8)
+                    st.session_state["dash_cache"][cat] = hot
+                    prog.progress((i + 1) / len(chosen))
+                status.empty(); prog.empty()
+
+        # 선택한 카테고리 카드만 2열로 표시
+        if chosen:
+            for row_start in range(0, len(chosen), 2):
+                cols = st.columns(2)
+                for ci, cat in enumerate(chosen[row_start:row_start + 2]):
+                    with cols[ci]:
+                        with st.container(border=True):
+                            st.markdown(f"**{cat}**")
+                            hot = st.session_state["dash_cache"].get(cat)
+                            if hot is None:
+                                st.caption("위 '갱신'을 누르면 급상승 키워드가 표시됩니다")
+                            elif not hot:
+                                st.caption("지금 뚜렷하게 상승 중인 키워드가 없습니다")
+                            else:
+                                for h in hot:
+                                    pct = h["change_pct"]
+                                    arrow = "📈" if pct > 5 else ("➡️" if pct > -5 else "📉")
+                                    st.write(f"{arrow} {h['키워드']}  ({'+' if pct>0 else ''}{pct}%)")
+                                st.caption("💡 '🎯 네이버 단일' 탭에서 분석 → blog_ai_writer로")
 
 # ============ 탭1: 네이버 단일 ============
 with tab1:
