@@ -979,27 +979,30 @@ with tab_home:
                     prog.progress((i + 1) / len(chosen))
                 status.empty(); prog.empty()
 
-        # 선택한 카테고리 카드만 2열로 표시
+        # 선택한 카테고리: 카드를 전체 폭으로, 카드 안에서 뉴스를 2칸으로
         if chosen:
-            for row_start in range(0, len(chosen), 2):
-                cols = st.columns(2)
-                for ci, cat in enumerate(chosen[row_start:row_start + 2]):
-                    with cols[ci]:
-                        with st.container(border=True):
-                            news = st.session_state["news_cache"].get(cat)
-                            count = len(news) if news else 0
-                            st.markdown(f"**{cat}**  ·  {count}건")
-                            if news is None:
-                                st.caption("위 버튼을 누르면 이 분야 최신 뉴스가 표시됩니다")
-                            elif not news:
-                                st.caption("가져온 뉴스가 없습니다")
-                            else:
-                                for n in news:
+            for cat in chosen:
+                with st.container(border=True):
+                    news = st.session_state["news_cache"].get(cat)
+                    count = len(news) if news else 0
+                    st.markdown(f"**{cat}**  ·  {count}건")
+                    if news is None:
+                        st.caption("위 버튼을 누르면 이 분야 최신 뉴스가 표시됩니다")
+                    elif not news:
+                        st.caption("가져온 뉴스가 없습니다")
+                    else:
+                        show = news[:20]
+                        half = (len(show) + 1) // 2  # 왼쪽 1~10, 오른쪽 11~20
+                        left, right = show[:half], show[half:]
+                        c_left, c_right = st.columns(2)
+                        for col, items, start in ((c_left, left, 1), (c_right, right, half + 1)):
+                            with col:
+                                for idx, n in enumerate(items, start=start):
                                     if n["link"]:
-                                        st.markdown(f"• [{n['title']}]({n['link']})")
+                                        st.markdown(f"{idx}. [{n['title']}]({n['link']})")
                                     else:
-                                        st.write(f"• {n['title']}")
-                                st.caption("💡 쓸 이슈의 키워드를 '🎯 네이버 단일'·'🪓 세부 키워드 발굴'에 넣어보세요")
+                                        st.write(f"{idx}. {n['title']}")
+                        st.caption("💡 쓸 이슈의 키워드를 '🎯 네이버 단일'·'🪓 세부 키워드 발굴'에 넣어보세요")
 
 # ============ 탭1: 네이버 단일 ============
 with tab1:
