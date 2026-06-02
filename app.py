@@ -354,6 +354,22 @@ VERDICT_RULES = {
     },
 }
 
+# 블로그를 한 번만 고르면 판정기준(stage) + 시드 프로필이 함께 정해진다.
+BLOG_CHOICES = {
+    "ioneteam (IT · 신규)": {
+        "stage": "신규 블로그 (ioneteam 등)",
+        "profile": "ioneteam (IT 문제해결)",
+    },
+    "reviewheart (육아·정책 · 기존)": {
+        "stage": "기존 블로그 (reviewheart 등)",
+        "profile": "reviewheart (육아·정책·리뷰)",
+    },
+    "(기타 · 자동 감지)": {
+        "stage": "신규 블로그 (ioneteam 등)",
+        "profile": "(자동 감지)",
+    },
+}
+
 def judge_keyword(result, blog_stage="신규 블로그 (ioneteam 등)"):
     """키워드가 해당 블로그 단계에 적합한지 등급 + 이유로 판정."""
     rule = VERDICT_RULES.get(blog_stage, VERDICT_RULES["신규 블로그 (ioneteam 등)"])
@@ -979,30 +995,37 @@ with tab_home:
                     prog.progress((i + 1) / len(chosen))
                 status.empty(); prog.empty()
 
-        # 선택한 카테고리: 카드를 전체 폭으로, 카드 안에서 뉴스를 2칸으로
+        # 선택한 카테고리: 한 줄에 2개씩, 각 카드 안에서 뉴스를 다시 2칸으로
         if chosen:
-            for cat in chosen:
-                with st.container(border=True):
-                    news = st.session_state["news_cache"].get(cat)
-                    count = len(news) if news else 0
-                    st.markdown(f"**{cat}**  ·  {count}건")
-                    if news is None:
-                        st.caption("위 버튼을 누르면 이 분야 최신 뉴스가 표시됩니다")
-                    elif not news:
-                        st.caption("가져온 뉴스가 없습니다")
-                    else:
-                        show = news[:20]
-                        half = (len(show) + 1) // 2  # 왼쪽 1~10, 오른쪽 11~20
-                        left, right = show[:half], show[half:]
-                        c_left, c_right = st.columns(2)
-                        for col, items, start in ((c_left, left, 1), (c_right, right, half + 1)):
-                            with col:
-                                for idx, n in enumerate(items, start=start):
-                                    if n["link"]:
-                                        st.markdown(f"{idx}. [{n['title']}]({n['link']})")
-                                    else:
-                                        st.write(f"{idx}. {n['title']}")
-                        st.caption("💡 쓸 이슈의 키워드를 '🎯 네이버 단일'·'🪓 세부 키워드 발굴'에 넣어보세요")
+            def render_news_card(cat):
+                news = st.session_state["news_cache"].get(cat)
+                count = len(news) if news else 0
+                st.markdown(f"**{cat}**  ·  {count}건")
+                if news is None:
+                    st.caption("위 버튼을 누르면 이 분야 최신 뉴스가 표시됩니다")
+                elif not news:
+                    st.caption("가져온 뉴스가 없습니다")
+                else:
+                    show = news[:20]
+                    half = (len(show) + 1) // 2
+                    left, right = show[:half], show[half:]
+                    cL, cR = st.columns(2)
+                    for col, items, start in ((cL, left, 1), (cR, right, half + 1)):
+                        with col:
+                            for idx, n in enumerate(items, start=start):
+                                if n["link"]:
+                                    st.markdown(f"{idx}. [{n['title']}]({n['link']})")
+                                else:
+                                    st.write(f"{idx}. {n['title']}")
+                    st.caption("💡 쓸 이슈의 키워드를 '🎯 네이버 단일'·'🪓 세부 키워드 발굴'에")
+
+            for row_start in range(0, len(chosen), 2):
+                pair = chosen[row_start:row_start + 2]
+                cols = st.columns(2)
+                for ci, cat in enumerate(pair):
+                    with cols[ci]:
+                        with st.container(border=True):
+                            render_news_card(cat)
 
 # ============ 탭1: 네이버 단일 ============
 with tab1:
@@ -1068,13 +1091,14 @@ with tab1:
             lr = st.session_state["last_result"]
             st.markdown("---")
             st.subheader("🎯 이 키워드, 내 블로그에 쓸까?")
-            blog_stage = st.radio(
-                "블로그 상태를 고르면 그 기준으로 판정합니다",
-                list(VERDICT_RULES.keys()),
+            blog_pick = st.radio(
+                "블로그를 고르면 합격 판정과 blog_ai_writer 텍스트가 함께 맞춰집니다",
+                list(BLOG_CHOICES.keys()),
                 horizontal=True,
-                key="verdict_stage",
+                key="unified_blog_pick",
             )
-            verdict = judge_keyword(lr, blog_stage)
+            cfg = BLOG_CHOICES[blog_pick]
+            verdict = judge_keyword(lr, cfg["stage"])
             if verdict["grade"] == "합격":
                 st.success(f"{verdict['emoji']} **{verdict['grade']}** — 이 블로그에 쓰기 좋은 키워드예요")
             elif verdict["grade"] == "보통":
@@ -1090,12 +1114,7 @@ with tab1:
                 f"'{lr['keyword']}' 분석 결과를 blog_ai_writer 자막칸에 붙일 텍스트로 만듭니다. "
                 "복사 → blog_ai_writer 자막칸에 붙여넣으면 키워드·카테고리·검색의도가 자동 설정됩니다."
             )
-            blog_choice = st.selectbox(
-                "어느 블로그용인가요?",
-                list(BLOG_PROFILES.keys()),
-                key="bridge_blog_choice",
-            )
-            seed_text = build_seed_text(lr, blog_choice)
+            seed_text = build_seed_text(lr, cfg["profile"])
             st.text_area("📋 복사할 텍스트 (아래 내용을 자막칸에 붙여넣기)", seed_text, height=140, key="bridge_seed")
             st.caption("💡 blog_ai_writer에서 카테고리·의도가 다르게 잡히면 그 칸만 직접 바꾸면 됩니다.")
 
