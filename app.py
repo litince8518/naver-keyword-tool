@@ -489,6 +489,47 @@ def get_google_trends(keywords_list, timeframe="today 12-m", geo="KR"):
         return {"error": f"구글 트렌드 조회 실패: {str(e)[:200]}"}
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_google_trending_now():
+    """씨앗 키워드 없이 '지금 한국에서 뜨는 검색어' 목록.
+    구글 정책/라이브러리 상태에 따라 막힐 수 있어 여러 방식을 순서대로 시도하고,
+    전부 실패하면 error 키로 사유를 돌려준다(앱이 죽지 않게)."""
+    try:
+        from pytrends.request import TrendReq
+    except ImportError:
+        return {"error": "pytrends 라이브러리가 설치되지 않았습니다"}
+
+    errors = []
+    try:
+        pytrends = TrendReq(hl="ko-KR", tz=540, timeout=(10, 25))
+    except Exception as e:
+        return {"error": f"구글 트렌드 초기화 실패: {str(e)[:150]}"}
+
+    # 방식 1: 일별 트렌딩(daily) — 키워드 목록만, 카테고리 구분 없음
+    try:
+        ts = pytrends.trending_searches(pn="south_korea")
+        if ts is not None and not ts.empty:
+            items = [str(x) for x in ts[0].tolist()][:20]
+            if items:
+                return {"mode": "daily", "items": items, "error": None}
+    except Exception as e:
+        errors.append(f"daily: {str(e)[:80]}")
+
+    # 방식 2: 실시간 트렌딩(realtime) — 큰 카테고리 단위
+    try:
+        rt = pytrends.realtime_trending_searches(pn="KR")
+        if rt is not None and not rt.empty:
+            col = "title" if "title" in rt.columns else rt.columns[0]
+            items = [str(x) for x in rt[col].tolist()][:20]
+            if items:
+                return {"mode": "realtime", "items": items, "error": None}
+    except Exception as e:
+        errors.append(f"realtime: {str(e)[:80]}")
+
+    return {"error": "지금 뜨는 검색어를 가져오지 못했습니다 (구글 트렌딩 응답 없음). "
+                     "구글 정책상 한국 데이터가 비어 있을 수 있어요. / " + " | ".join(errors)}
+
+
 # ================================================
 # 네이버 데이터랩 (신규)
 # ================================================
@@ -1166,6 +1207,26 @@ with tab2:
 # ============ 탭3: 구글 트렌드 ============
 with tab3:
     st.info("💡 구글 트렌드는 API 키가 필요 없습니다. 최대 5개 키워드 비교 가능.  \n　🔵 구글 데이터 (Google Trends)")
+
+    with st.expander("🔥 지금 한국에서 뜨는 검색어 (씨앗 없이 보기 · 참고용)", expanded=False):
+        st.caption("키워드를 안 넣어도 됩니다. 지금 구글에서 검색이 급상승 중인 키워드 목록이에요. "
+                   "⚠️ 구글 트렌딩은 연예·스포츠·이슈에 쏠리는 편이라 글감 영감용으로만 참고하세요.")
+        if st.button("🔄 지금 뜨는 검색어 불러오기", key="gtrend_now_btn"):
+            with st.spinner("구글 트렌딩 불러오는 중..."):
+                now_res = get_google_trending_now()
+            if now_res.get("error"):
+                st.warning(now_res["error"])
+            else:
+                items = now_res.get("items", [])
+                mode_label = "일별 급상승" if now_res.get("mode") == "daily" else "실시간 급상승"
+                st.success(f"{mode_label} · {len(items)}개")
+                cols = st.columns(2)
+                for i, kw in enumerate(items):
+                    with cols[i % 2]:
+                        st.write(f"**{i+1}.** {kw}")
+                st.caption("💡 관심 가는 키워드는 '🎯 키워드 검증' 탭에 넣어 네이버 검색량까지 확인해보세요.")
+
+    st.markdown("---")
     
     col_a, col_b, col_c = st.columns([2, 1, 1])
     with col_a:
