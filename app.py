@@ -970,7 +970,8 @@ with tab_home:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
         st.info("""🏠 카테고리별 **지금 뜨는 뉴스·이슈**를 보여줍니다. 카드에서 마음에 드는 이슈를 보면,  
-        그 키워드를 '🎯 네이버 단일'이나 '🪓 세부 키워드 발굴' 탭에 넣어 글감으로 발전시키세요.""")
+        그 키워드를 '🎯 키워드 검증'이나 '🪓 세부 글감 파기' 탭에 넣어 글감으로 발전시키세요.  
+　🟢 네이버 데이터 (검색 API · 뉴스)""")
 
         if "news_cache" not in st.session_state:
             st.session_state["news_cache"] = {}
@@ -1018,7 +1019,7 @@ with tab_home:
                                     st.markdown(f"{idx}. [{n['title']}]({n['link']})")
                                 else:
                                     st.write(f"{idx}. {n['title']}")
-                    st.caption("💡 쓸 이슈의 키워드를 '🎯 네이버 단일'·'🪓 세부 키워드 발굴'에")
+                    st.caption("💡 쓸 이슈의 키워드를 '🎯 키워드 검증'·'🪓 세부 글감 파기'에")
 
             for row_start in range(0, len(chosen), 2):
                 pair = chosen[row_start:row_start + 2]
@@ -1033,7 +1034,7 @@ with tab1:
     if not st.session_state.api_configured:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
-        st.info("🎯 **쓸 키워드를 이미 정했을 때** — 이 키워드로 글 쓰면 노출될지, 검색량·경쟁·문서수를 종합해 판정합니다.")
+        st.info("🎯 **쓸 키워드를 이미 정했을 때** — 이 키워드로 글 쓰면 노출될지, 검색량·경쟁·문서수를 종합해 판정합니다.  \n　🟢 네이버 데이터 (검색 API + 검색광고 API)")
         keyword = st.text_input("분석할 키워드", placeholder="예: 다이어트", key="single_kw")
         
         if st.button("🔍 분석 시작", type="primary", use_container_width=True, key="single_btn"):
@@ -1125,7 +1126,7 @@ with tab2:
     if not st.session_state.api_configured:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
-        st.info("📋 **후보 키워드가 여러 개일 때** — 한 줄에 하나씩 넣으면 한꺼번에 판정해 비교해줍니다.")
+        st.info("📋 **후보 키워드가 여러 개일 때** — 한 줄에 하나씩 넣으면 한꺼번에 판정해 비교해줍니다.  \n　🟢 네이버 데이터 (검색 API + 검색광고 API)")
         keywords_text = st.text_area("키워드들 (한 줄에 하나씩)", placeholder="다이어트\n홈트레이닝\n간헐적단식", height=150)
         if st.button("🔍 일괄 분석", type="primary", use_container_width=True, key="bulk_btn"):
             keywords = [k.strip() for k in keywords_text.split("\n") if k.strip()]
@@ -1164,7 +1165,7 @@ with tab2:
 
 # ============ 탭3: 구글 트렌드 ============
 with tab3:
-    st.info("💡 구글 트렌드는 API 키가 필요 없습니다. 최대 5개 키워드 비교 가능.")
+    st.info("💡 구글 트렌드는 API 키가 필요 없습니다. 최대 5개 키워드 비교 가능.  \n　🔵 구글 데이터 (Google Trends)")
     
     col_a, col_b, col_c = st.columns([2, 1, 1])
     with col_a:
@@ -1235,7 +1236,8 @@ with tab4:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
         st.info("""📊 **타겟 독자를 확인할 때** — 키워드를 검색하는 사람들의 **연령/성별/기기** 비율을 분석합니다.  
-        ⚠️ 이 기능은 developers.naver.com에서 **'데이터랩(검색어 트렌드)' API 권한**이 추가되어 있어야 동작합니다.""")
+        ⚠️ 이 기능은 developers.naver.com에서 **'데이터랩(검색어 트렌드)' API 권한**이 추가되어 있어야 동작합니다.  
+　🟢 네이버 데이터 (데이터랩)""")
         
         dl_keyword = st.text_input("분석할 키워드", placeholder="예: 다이어트", key="dl_kw")
         
@@ -1313,7 +1315,8 @@ with tab5:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
         st.info("""🔥 **뭘 쓸지 막막할 때** — 관심 분야 단어 하나를 씨앗으로 넣으면, **그 분야에서 요즘 뜨고 있는 연관 키워드**를 찾아드립니다.
-        (예: '부모급여' 넣으면 그 주변 뜨는 키워드가 나옴) 최근 3개월 트렌드를 분석해 상승률 높은 순으로 보여줘요. (데이터랩 권한 필요)""")
+        (예: '부모급여' 넣으면 그 주변 뜨는 키워드가 나옴) 최근 3개월 트렌드를 분석해 상승률 높은 순으로 보여줘요. (데이터랩 권한 필요)  
+　🟢 네이버 데이터 (검색광고 API + 데이터랩)""")
 
         col_a, col_b = st.columns([3, 1])
         with col_a:
@@ -1433,7 +1436,7 @@ with tab5:
                             mime="text/csv", use_container_width=True,
                         )
 
-                        st.caption("💡 '뜨는 키워드'를 '🎯 네이버 단일' 탭에서 자세히 분석하면 블로그 주제로 딱!")
+                        st.caption("💡 '뜨는 키워드'를 '🎯 키워드 검증' 탭에서 자세히 분석하면 블로그 주제로 딱!")
 
 # ============ 탭6: 세부 키워드 발굴 ============
 with tab6:
@@ -1441,7 +1444,8 @@ with tab6:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
         st.info("""🪓 **큰 키워드를 글감으로 쪼갤 때** — 넓은 키워드(예: 갤럭시S26)를 넣으면, **그 뒤에 붙는 세부 키워드**(사전예약·출시일·케이스 등)를 찾아  
-        각각 합격 판정까지 해줍니다. 넓은 키워드는 입구로만 쓰고, 합격한 세부 키워드로 글을 쓰세요.""")
+        각각 합격 판정까지 해줍니다. 넓은 키워드는 입구로만 쓰고, 합격한 세부 키워드로 글을 쓰세요.  
+　🟢 네이버 데이터 (자동완성 + 검색광고 API)""")
 
         col_s1, col_s2 = st.columns([3, 1])
         with col_s1:
@@ -1513,7 +1517,7 @@ with tab6:
                 file_name=f"sub_keywords_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv", use_container_width=True,
             )
-            st.caption("💡 합격한 키워드를 '🎯 네이버 단일' 탭에 넣으면 blog_ai_writer로 바로 보낼 수 있어요.")
+            st.caption("💡 합격한 키워드를 '🎯 키워드 검증' 탭에 넣으면 blog_ai_writer로 바로 보낼 수 있어요.")
 
         # 2단계 모드: 수집된 키워드에서 직접 고르기
         elif st.session_state.get("sub_keywords") and st.session_state.get("sub_two_step"):
