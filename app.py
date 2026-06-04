@@ -164,12 +164,12 @@ with st.sidebar:
                 st.error("⚠️ 5개 키 모두 입력하세요")
     
     st.markdown("---")
-    st.markdown("""**📋 탭 안내**
-- 🎯 네이버 단일: 키워드 종합 분석
-- 📋 네이버 일괄: 여러 개 한번에
-- 📈 구글 트렌드: 키워드 트렌드 비교
-- 📊 데이터랩: 연령/성별 분석
-- 🔥 트렌드 발굴: 내 분야 뜨는 키워드""")
+    st.markdown("""**📋 이럴 때 어느 탭?**
+- 뭐 쓸지 모를 때 → 🏠 홈 / 🔥 글감 찾기
+- 키워드 정했는데 쓸까 고민 → 🎯 키워드 검증
+- 여러 개 한꺼번에 → 📋 여러 개 검증
+- 더 세부 글감으로 쪼개기 → 🪓 세부 글감 파기
+- 부가: 📈 구글 비교 / 📊 누가 검색하나""")
 
 
 # ================================================
@@ -959,8 +959,8 @@ def get_trend_direction(keyword, keys):
 # 메인 영역 - 탭 5개
 # ================================================
 tab_home, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "🏠 트렌드 대시보드", "🎯 네이버 단일", "📋 네이버 일괄", "📈 구글 트렌드",
-    "📊 데이터랩 (인구통계)", "🔥 트렌드 발굴", "🪓 세부 키워드 발굴"
+    "🏠 홈 · 뭐 쓸지 둘러보기", "🎯 키워드 검증 · 쓸까 말까", "📋 여러 개 한번에 검증", "📈 구글 트렌드 비교",
+    "📊 누가 검색하나 (연령·성별)", "🔥 글감 찾기 · 뭐가 뜨나", "🪓 세부 글감 파기"
 ])
 
 # ============ 탭: 트렌드 대시보드 (메인) ============
@@ -1032,6 +1032,7 @@ with tab1:
     if not st.session_state.api_configured:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
+        st.info("🎯 **쓸 키워드를 이미 정했을 때** — 이 키워드로 글 쓰면 노출될지, 검색량·경쟁·문서수를 종합해 판정합니다.")
         keyword = st.text_input("분석할 키워드", placeholder="예: 다이어트", key="single_kw")
         
         if st.button("🔍 분석 시작", type="primary", use_container_width=True, key="single_btn"):
@@ -1123,6 +1124,7 @@ with tab2:
     if not st.session_state.api_configured:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
+        st.info("📋 **후보 키워드가 여러 개일 때** — 한 줄에 하나씩 넣으면 한꺼번에 판정해 비교해줍니다.")
         keywords_text = st.text_area("키워드들 (한 줄에 하나씩)", placeholder="다이어트\n홈트레이닝\n간헐적단식", height=150)
         if st.button("🔍 일괄 분석", type="primary", use_container_width=True, key="bulk_btn"):
             keywords = [k.strip() for k in keywords_text.split("\n") if k.strip()]
@@ -1231,7 +1233,7 @@ with tab4:
     if not st.session_state.api_configured:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
-        st.info("""💡 키워드를 검색하는 사람들의 **연령/성별/기기** 비율을 분석합니다.  
+        st.info("""📊 **타겟 독자를 확인할 때** — 키워드를 검색하는 사람들의 **연령/성별/기기** 비율을 분석합니다.  
         ⚠️ 이 기능은 developers.naver.com에서 **'데이터랩(검색어 트렌드)' API 권한**이 추가되어 있어야 동작합니다.""")
         
         dl_keyword = st.text_input("분석할 키워드", placeholder="예: 다이어트", key="dl_kw")
@@ -1309,8 +1311,8 @@ with tab5:
     if not st.session_state.api_configured:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
-        st.info("""💡 관심 키워드를 입력하면, **그 분야에서 요즘 뜨고 있는 연관 키워드**를 찾아드립니다.  
-        최근 3개월 트렌드를 분석해 상승률이 높은 순으로 보여줘요. (데이터랩 권한 필요)""")
+        st.info("""🔥 **뭘 쓸지 막막할 때** — 관심 분야 단어 하나를 씨앗으로 넣으면, **그 분야에서 요즘 뜨고 있는 연관 키워드**를 찾아드립니다.
+        (예: '부모급여' 넣으면 그 주변 뜨는 키워드가 나옴) 최근 3개월 트렌드를 분석해 상승률 높은 순으로 보여줘요. (데이터랩 권한 필요)""")
 
         col_a, col_b = st.columns([3, 1])
         with col_a:
@@ -1437,7 +1439,7 @@ with tab6:
     if not st.session_state.api_configured:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
-        st.info("""🪓 넓은 키워드(예: 갤럭시S26)를 넣으면, **그 뒤에 붙는 세부 키워드**(사전예약·출시일·케이스 등)를 찾아  
+        st.info("""🪓 **큰 키워드를 글감으로 쪼갤 때** — 넓은 키워드(예: 갤럭시S26)를 넣으면, **그 뒤에 붙는 세부 키워드**(사전예약·출시일·케이스 등)를 찾아  
         각각 합격 판정까지 해줍니다. 넓은 키워드는 입구로만 쓰고, 합격한 세부 키워드로 글을 쓰세요.""")
 
         col_s1, col_s2 = st.columns([3, 1])
