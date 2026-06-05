@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.3
+키워드 종합 분석기 v6.4
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
 """
@@ -425,24 +425,27 @@ def judge_keyword(result, blog_stage="신규 블로그 (ioneteam 등)"):
 def build_seed_text(result, blog_profile="(자동 감지)"):
     kw = result.get("keyword", "")
     rel = result.get("related_keywords", []) or []
-    rel_words = [r.get("키워드", "") for r in rel[:8] if r.get("키워드")]
+    rel_words = [r.get("키워드", "") for r in rel if r.get("키워드")]
 
-    # blog_ai_writer 자막 분석 엔진은 "빈도순 키워드 추출"로
-    # kw·카테고리·의도를 자동 설정한다(extractKeywords/detectCategory/detectIntent).
-    # → 문장형 서술(AI 티 금지어)도, 블로그별 고정 힌트(육아 키워드에 IT 단어가
-    #    섞이던 문제)도 둘 다 불필요. 메인 키워드 + 실제 연관어만 보내면
-    #    자동 감지가 알아서 카테고리·의도를 잡는다.
-    # blog_profile 인자는 호환을 위해 남겨두되 더 이상 텍스트에 반영하지 않는다.
-    lines = []
+    # blog_ai_writer 자막 분석 엔진은 텍스트 길이가 100자 이상일 때만 작동하고
+    # (onSubtitleInput: length < 100이면 분석 스킵), 빈도순 키워드 추출로
+    # kw·카테고리·의도를 자동 설정한다. 따라서:
+    #   ① 블로그별 고정 힌트(IT 단어 등)는 넣지 않는다 — 카테고리 오판 방지.
+    #   ② 단, 메인 키워드+연관어만으로 100자를 못 넘기면 자동분석이 안 켜지므로,
+    #      연관어를 순환 배치해 110자 이상을 안정적으로 확보한다(억지 단일 반복 회피).
+    lines = [kw]
     if rel_words:
-        # 메인 키워드를 앞·뒤 2회만 둬 top1 보장(과한 반복 방지) + 연관어 사이 배치
-        lines.append(kw)
         lines.append(", ".join(rel_words))
-        lines.append(kw)
-    else:
-        # 연관어가 없으면 3회까지만 — 무한 반복으로 보기 흉해지는 것 방지
-        lines = [kw, kw, kw]
-    return "\n".join(l for l in lines if l.strip())
+    base = "\n".join(lines)
+
+    # 100자 임계 미달 시 보강: 연관어가 있으면 그 묶음을 한 번 더 순환,
+    # 없으면 메인 키워드를 반복(최소한의 보강).
+    filler_unit = (", ".join(rel_words) if rel_words else kw)
+    guard = 0
+    while len(base) < 110 and guard < 12:
+        base += "\n" + filler_unit
+        guard += 1
+    return base
 
 
 # ================================================
@@ -1557,4 +1560,4 @@ with tab6:
                 st.rerun()
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.3 | 네이버 + 구글 + 데이터랩 + 트렌드 발굴")
+st.caption("💡 키워드 종합 분석기 v6.4 | 네이버 + 구글 + 데이터랩 + 트렌드 발굴")
