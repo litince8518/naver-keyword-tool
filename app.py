@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.4
+키워드 종합 분석기 v6.5
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
 """
@@ -427,25 +427,15 @@ def build_seed_text(result, blog_profile="(자동 감지)"):
     rel = result.get("related_keywords", []) or []
     rel_words = [r.get("키워드", "") for r in rel if r.get("키워드")]
 
-    # blog_ai_writer 자막 분석 엔진은 텍스트 길이가 100자 이상일 때만 작동하고
-    # (onSubtitleInput: length < 100이면 분석 스킵), 빈도순 키워드 추출로
-    # kw·카테고리·의도를 자동 설정한다. 따라서:
-    #   ① 블로그별 고정 힌트(IT 단어 등)는 넣지 않는다 — 카테고리 오판 방지.
-    #   ② 단, 메인 키워드+연관어만으로 100자를 못 넘기면 자동분석이 안 켜지므로,
-    #      연관어를 순환 배치해 110자 이상을 안정적으로 확보한다(억지 단일 반복 회피).
+    # blog_ai_writer 자막칸 자동분석은 빈도순 키워드 추출로 kw·카테고리·의도를
+    # 자동 설정한다. 키워드 묶음은 원래 짧은 게 정상이므로 억지로 길이를
+    # 부풀리지 않는다(반복 줄 = 자막인 척 위장이라 지저분). blog_ai_writer 쪽
+    # 자막칸 임계값을 100→30자로 낮춰 짧은 키워드 텍스트도 분석이 켜지게 했다.
+    # 블로그 고정 힌트(IT 단어 등)는 카테고리 오판 방지를 위해 넣지 않는다.
     lines = [kw]
     if rel_words:
         lines.append(", ".join(rel_words))
-    base = "\n".join(lines)
-
-    # 100자 임계 미달 시 보강: 연관어가 있으면 그 묶음을 한 번 더 순환,
-    # 없으면 메인 키워드를 반복(최소한의 보강).
-    filler_unit = (", ".join(rel_words) if rel_words else kw)
-    guard = 0
-    while len(base) < 110 and guard < 12:
-        base += "\n" + filler_unit
-        guard += 1
-    return base
+    return "\n".join(l for l in lines if l.strip())
 
 
 # ================================================
@@ -1133,8 +1123,8 @@ with tab1:
             )
             seed_text = build_seed_text(lr, cfg["profile"])
             st.text_area("📋 복사할 텍스트 (아래 내용을 자막칸에 붙여넣기)", seed_text, height=140, key="bridge_seed")
-            if len(seed_text) < 100:
-                st.caption("⚠ 텍스트가 100자 미만이면 자막칸 자동 분석이 안 켜질 수 있어요. 이때는 키워드(kw)칸에 직접 입력하세요.")
+            if len(seed_text) < 30:
+                st.caption("⚠ 연관어가 적어 텍스트가 짧아요. 이땐 자막칸 자동분석이 안 켜질 수 있으니, blog_ai_writer 키워드(kw)칸에 직접 입력하세요.")
             st.caption("💡 blog_ai_writer에서 카테고리·의도가 다르게 잡히면 그 칸만 직접 바꾸면 됩니다.")
 
 # ============ 탭2: 네이버 일괄 ============
@@ -1560,4 +1550,4 @@ with tab6:
                 st.rerun()
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.4 | 네이버 + 구글 + 데이터랩 + 트렌드 발굴")
+st.caption("💡 키워드 종합 분석기 v6.5 | 네이버 + 구글 + 데이터랩 + 트렌드 발굴")
