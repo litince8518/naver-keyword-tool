@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.2
+키워드 종합 분석기 v6.3
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
 """
@@ -425,26 +425,24 @@ def judge_keyword(result, blog_stage="신규 블로그 (ioneteam 등)"):
 def build_seed_text(result, blog_profile="(자동 감지)"):
     kw = result.get("keyword", "")
     rel = result.get("related_keywords", []) or []
-    rel_words = [r.get("키워드", "") for r in rel[:6] if r.get("키워드")]
-    prof = BLOG_PROFILES.get(blog_profile, BLOG_PROFILES["(자동 감지)"])
+    rel_words = [r.get("키워드", "") for r in rel[:8] if r.get("키워드")]
 
     # blog_ai_writer 자막 분석 엔진은 "빈도순 키워드 추출"로
     # kw·카테고리·의도를 자동 설정한다(extractKeywords/detectCategory/detectIntent).
-    # 따라서 문장형 서술이 아니라 "키워드 밀집형"으로 보내야:
-    #   ① 본문에 AI 티 문장이 옮겨붙지 않고 (금지어 "~에 대해 검색하는 사람들이 많습니다" 등 제거)
-    #   ② 메인 키워드가 1순위로, 카테고리·의도가 정확히 잡힌다.
-    # 메인 키워드를 맨 앞+반복해 extractKeywords의 top1로 고정한다.
-    parts = []
-    parts.append(f"{kw}")                          # top1 고정용 선두 노출
+    # → 문장형 서술(AI 티 금지어)도, 블로그별 고정 힌트(육아 키워드에 IT 단어가
+    #    섞이던 문제)도 둘 다 불필요. 메인 키워드 + 실제 연관어만 보내면
+    #    자동 감지가 알아서 카테고리·의도를 잡는다.
+    # blog_profile 인자는 호환을 위해 남겨두되 더 이상 텍스트에 반영하지 않는다.
+    lines = []
     if rel_words:
-        parts.append(", ".join(rel_words))         # 연관어 — 카테고리/의도 빈도 보강
-    parts.append(f"{kw} {kw}")                      # 메인 키워드 빈도 가중(top1 보장)
-    if prof.get("cat_hint"):
-        parts.append(prof["cat_hint"])             # 카테고리 신호어
-    if prof.get("intent_hint"):
-        parts.append(prof["intent_hint"])          # 검색의도 신호어
-    seed = "\n".join(p for p in parts if p.strip())
-    return seed
+        # 메인 키워드를 앞·뒤 2회만 둬 top1 보장(과한 반복 방지) + 연관어 사이 배치
+        lines.append(kw)
+        lines.append(", ".join(rel_words))
+        lines.append(kw)
+    else:
+        # 연관어가 없으면 3회까지만 — 무한 반복으로 보기 흉해지는 것 방지
+        lines = [kw, kw, kw]
+    return "\n".join(l for l in lines if l.strip())
 
 
 # ================================================
@@ -1100,14 +1098,19 @@ with tab1:
         if st.session_state.get("last_result"):
             lr = st.session_state["last_result"]
             st.markdown("---")
-            st.subheader("🎯 이 키워드, 내 블로그에 쓸까?")
+            # ① 블로그 먼저 선택 (판정·텍스트의 기준이 되므로 최상단)
+            st.subheader("📌 어느 블로그에 쓸 건가요?")
             blog_pick = st.radio(
-                "블로그를 고르면 합격 판정과 blog_ai_writer 텍스트가 함께 맞춰집니다",
+                "블로그를 먼저 고르면, 아래 합격 판정과 blog_ai_writer 텍스트가 그 블로그 기준으로 맞춰집니다",
                 list(BLOG_CHOICES.keys()),
                 horizontal=True,
                 key="unified_blog_pick",
             )
             cfg = BLOG_CHOICES[blog_pick]
+
+            # ② 선택한 블로그 기준 합격 판정
+            st.markdown("---")
+            st.subheader("🎯 이 키워드, 이 블로그에 쓸까?")
             verdict = judge_keyword(lr, cfg["stage"])
             if verdict["grade"] == "합격":
                 st.success(f"{verdict['emoji']} **{verdict['grade']}** — 이 블로그에 쓰기 좋은 키워드예요")
@@ -1121,9 +1124,9 @@ with tab1:
             st.markdown("---")
             st.subheader("✍️ blog_ai_writer로 보내기")
             st.caption(
-                f"'{lr['keyword']}' 분석 결과를 키워드 밀집형 텍스트로 만듭니다. "
+                f"'{lr['keyword']}' 분석 결과를 키워드 나열형 텍스트로 만듭니다. "
                 "복사 → blog_ai_writer 자막칸에 붙여넣으면 키워드·카테고리·검색의도가 자동 설정됩니다. "
-                "(문장이 아니라 키워드 나열형이라, 본문에 AI 티가 옮겨붙지 않고 자동 분석도 더 정확해요.)"
+                "(메인 키워드 + 연관어만 담아, 본문에 AI 티가 옮겨붙지 않고 자동 분석도 정확해요.)"
             )
             seed_text = build_seed_text(lr, cfg["profile"])
             st.text_area("📋 복사할 텍스트 (아래 내용을 자막칸에 붙여넣기)", seed_text, height=140, key="bridge_seed")
@@ -1554,4 +1557,4 @@ with tab6:
                 st.rerun()
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.2 | 네이버 + 구글 + 데이터랩 + 트렌드 발굴")
+st.caption("💡 키워드 종합 분석기 v6.3 | 네이버 + 구글 + 데이터랩 + 트렌드 발굴")
