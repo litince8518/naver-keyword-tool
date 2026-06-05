@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6
+키워드 종합 분석기 v6.2
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
 """
@@ -428,14 +428,22 @@ def build_seed_text(result, blog_profile="(자동 감지)"):
     rel_words = [r.get("키워드", "") for r in rel[:6] if r.get("키워드")]
     prof = BLOG_PROFILES.get(blog_profile, BLOG_PROFILES["(자동 감지)"])
 
-    rel_str = ", ".join(rel_words) if rel_words else kw
-    seed = (
-        f"{kw}에 대해 검색하는 사람들이 많습니다. "
-        f"{kw} 관련해서 함께 많이 찾는 키워드로는 {rel_str} 등이 있습니다. "
-        f"이 글에서는 {kw}의 핵심 내용을 정리하고, "
-        f"{prof['intent_hint']}을 중심으로 자세히 다룹니다. "
-        f"{prof['cat_hint']}"
-    ).strip()
+    # blog_ai_writer 자막 분석 엔진은 "빈도순 키워드 추출"로
+    # kw·카테고리·의도를 자동 설정한다(extractKeywords/detectCategory/detectIntent).
+    # 따라서 문장형 서술이 아니라 "키워드 밀집형"으로 보내야:
+    #   ① 본문에 AI 티 문장이 옮겨붙지 않고 (금지어 "~에 대해 검색하는 사람들이 많습니다" 등 제거)
+    #   ② 메인 키워드가 1순위로, 카테고리·의도가 정확히 잡힌다.
+    # 메인 키워드를 맨 앞+반복해 extractKeywords의 top1로 고정한다.
+    parts = []
+    parts.append(f"{kw}")                          # top1 고정용 선두 노출
+    if rel_words:
+        parts.append(", ".join(rel_words))         # 연관어 — 카테고리/의도 빈도 보강
+    parts.append(f"{kw} {kw}")                      # 메인 키워드 빈도 가중(top1 보장)
+    if prof.get("cat_hint"):
+        parts.append(prof["cat_hint"])             # 카테고리 신호어
+    if prof.get("intent_hint"):
+        parts.append(prof["intent_hint"])          # 검색의도 신호어
+    seed = "\n".join(p for p in parts if p.strip())
     return seed
 
 
@@ -970,8 +978,7 @@ with tab_home:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
         st.info("""🏠 카테고리별 **지금 뜨는 뉴스·이슈**를 보여줍니다. 카드에서 마음에 드는 이슈를 보면,  
-        그 키워드를 '🎯 키워드 검증'이나 '🪓 세부 글감 파기' 탭에 넣어 글감으로 발전시키세요.  
-　🟢 네이버 데이터 (검색 API · 뉴스)""")
+        그 키워드를 '🎯 네이버 단일'이나 '🪓 세부 키워드 발굴' 탭에 넣어 글감으로 발전시키세요.""")
 
         if "news_cache" not in st.session_state:
             st.session_state["news_cache"] = {}
@@ -1019,7 +1026,7 @@ with tab_home:
                                     st.markdown(f"{idx}. [{n['title']}]({n['link']})")
                                 else:
                                     st.write(f"{idx}. {n['title']}")
-                    st.caption("💡 쓸 이슈의 키워드를 '🎯 키워드 검증'·'🪓 세부 글감 파기'에")
+                    st.caption("💡 쓸 이슈의 키워드를 '🎯 네이버 단일'·'🪓 세부 키워드 발굴'에")
 
             for row_start in range(0, len(chosen), 2):
                 pair = chosen[row_start:row_start + 2]
@@ -1034,7 +1041,7 @@ with tab1:
     if not st.session_state.api_configured:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
-        st.info("🎯 **쓸 키워드를 이미 정했을 때** — 이 키워드로 글 쓰면 노출될지, 검색량·경쟁·문서수를 종합해 판정합니다.  \n　🟢 네이버 데이터 (검색 API + 검색광고 API)")
+        st.info("🎯 **쓸 키워드를 이미 정했을 때** — 이 키워드로 글 쓰면 노출될지, 검색량·경쟁·문서수를 종합해 판정합니다.")
         keyword = st.text_input("분석할 키워드", placeholder="예: 다이어트", key="single_kw")
         
         if st.button("🔍 분석 시작", type="primary", use_container_width=True, key="single_btn"):
@@ -1114,11 +1121,14 @@ with tab1:
             st.markdown("---")
             st.subheader("✍️ blog_ai_writer로 보내기")
             st.caption(
-                f"'{lr['keyword']}' 분석 결과를 blog_ai_writer 자막칸에 붙일 텍스트로 만듭니다. "
-                "복사 → blog_ai_writer 자막칸에 붙여넣으면 키워드·카테고리·검색의도가 자동 설정됩니다."
+                f"'{lr['keyword']}' 분석 결과를 키워드 밀집형 텍스트로 만듭니다. "
+                "복사 → blog_ai_writer 자막칸에 붙여넣으면 키워드·카테고리·검색의도가 자동 설정됩니다. "
+                "(문장이 아니라 키워드 나열형이라, 본문에 AI 티가 옮겨붙지 않고 자동 분석도 더 정확해요.)"
             )
             seed_text = build_seed_text(lr, cfg["profile"])
             st.text_area("📋 복사할 텍스트 (아래 내용을 자막칸에 붙여넣기)", seed_text, height=140, key="bridge_seed")
+            if len(seed_text) < 100:
+                st.caption("⚠ 텍스트가 100자 미만이면 자막칸 자동 분석이 안 켜질 수 있어요. 이때는 키워드(kw)칸에 직접 입력하세요.")
             st.caption("💡 blog_ai_writer에서 카테고리·의도가 다르게 잡히면 그 칸만 직접 바꾸면 됩니다.")
 
 # ============ 탭2: 네이버 일괄 ============
@@ -1126,7 +1136,7 @@ with tab2:
     if not st.session_state.api_configured:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
-        st.info("📋 **후보 키워드가 여러 개일 때** — 한 줄에 하나씩 넣으면 한꺼번에 판정해 비교해줍니다.  \n　🟢 네이버 데이터 (검색 API + 검색광고 API)")
+        st.info("📋 **후보 키워드가 여러 개일 때** — 한 줄에 하나씩 넣으면 한꺼번에 판정해 비교해줍니다.")
         keywords_text = st.text_area("키워드들 (한 줄에 하나씩)", placeholder="다이어트\n홈트레이닝\n간헐적단식", height=150)
         if st.button("🔍 일괄 분석", type="primary", use_container_width=True, key="bulk_btn"):
             keywords = [k.strip() for k in keywords_text.split("\n") if k.strip()]
@@ -1165,7 +1175,7 @@ with tab2:
 
 # ============ 탭3: 구글 트렌드 ============
 with tab3:
-    st.info("💡 구글 트렌드는 API 키가 필요 없습니다. 최대 5개 키워드 비교 가능.  \n　🔵 구글 데이터 (Google Trends)")
+    st.info("💡 구글 트렌드는 API 키가 필요 없습니다. 최대 5개 키워드 비교 가능.")
     
     col_a, col_b, col_c = st.columns([2, 1, 1])
     with col_a:
@@ -1236,8 +1246,7 @@ with tab4:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
         st.info("""📊 **타겟 독자를 확인할 때** — 키워드를 검색하는 사람들의 **연령/성별/기기** 비율을 분석합니다.  
-        ⚠️ 이 기능은 developers.naver.com에서 **'데이터랩(검색어 트렌드)' API 권한**이 추가되어 있어야 동작합니다.  
-　🟢 네이버 데이터 (데이터랩)""")
+        ⚠️ 이 기능은 developers.naver.com에서 **'데이터랩(검색어 트렌드)' API 권한**이 추가되어 있어야 동작합니다.""")
         
         dl_keyword = st.text_input("분석할 키워드", placeholder="예: 다이어트", key="dl_kw")
         
@@ -1315,8 +1324,7 @@ with tab5:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
         st.info("""🔥 **뭘 쓸지 막막할 때** — 관심 분야 단어 하나를 씨앗으로 넣으면, **그 분야에서 요즘 뜨고 있는 연관 키워드**를 찾아드립니다.
-        (예: '부모급여' 넣으면 그 주변 뜨는 키워드가 나옴) 최근 3개월 트렌드를 분석해 상승률 높은 순으로 보여줘요. (데이터랩 권한 필요)  
-　🟢 네이버 데이터 (검색광고 API + 데이터랩)""")
+        (예: '부모급여' 넣으면 그 주변 뜨는 키워드가 나옴) 최근 3개월 트렌드를 분석해 상승률 높은 순으로 보여줘요. (데이터랩 권한 필요)""")
 
         col_a, col_b = st.columns([3, 1])
         with col_a:
@@ -1436,7 +1444,7 @@ with tab5:
                             mime="text/csv", use_container_width=True,
                         )
 
-                        st.caption("💡 '뜨는 키워드'를 '🎯 키워드 검증' 탭에서 자세히 분석하면 블로그 주제로 딱!")
+                        st.caption("💡 '뜨는 키워드'를 '🎯 네이버 단일' 탭에서 자세히 분석하면 블로그 주제로 딱!")
 
 # ============ 탭6: 세부 키워드 발굴 ============
 with tab6:
@@ -1444,8 +1452,7 @@ with tab6:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
         st.info("""🪓 **큰 키워드를 글감으로 쪼갤 때** — 넓은 키워드(예: 갤럭시S26)를 넣으면, **그 뒤에 붙는 세부 키워드**(사전예약·출시일·케이스 등)를 찾아  
-        각각 합격 판정까지 해줍니다. 넓은 키워드는 입구로만 쓰고, 합격한 세부 키워드로 글을 쓰세요.  
-　🟢 네이버 데이터 (자동완성 + 검색광고 API)""")
+        각각 합격 판정까지 해줍니다. 넓은 키워드는 입구로만 쓰고, 합격한 세부 키워드로 글을 쓰세요.""")
 
         col_s1, col_s2 = st.columns([3, 1])
         with col_s1:
@@ -1517,7 +1524,7 @@ with tab6:
                 file_name=f"sub_keywords_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv", use_container_width=True,
             )
-            st.caption("💡 합격한 키워드를 '🎯 키워드 검증' 탭에 넣으면 blog_ai_writer로 바로 보낼 수 있어요.")
+            st.caption("💡 합격한 키워드를 '🎯 네이버 단일' 탭에 넣으면 blog_ai_writer로 바로 보낼 수 있어요.")
 
         # 2단계 모드: 수집된 키워드에서 직접 고르기
         elif st.session_state.get("sub_keywords") and st.session_state.get("sub_two_step"):
@@ -1547,4 +1554,4 @@ with tab6:
                 st.rerun()
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.0 | 네이버 + 구글 + 데이터랩 + 트렌드 발굴")
+st.caption("💡 키워드 종합 분석기 v6.2 | 네이버 + 구글 + 데이터랩 + 트렌드 발굴")
