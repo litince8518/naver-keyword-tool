@@ -1,12 +1,14 @@
 """
-키워드 종합 분석기 v6.6
+키워드 종합 분석기 v6.8
 ====================
-네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집
+네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
 [변경 이력]
 - v6.4: AI 키워드 탭 추가 (클로드·제미나이 각각 발굴 → 네이버 실측, 모델별 따로 출력)
 - v6.5: AI 키워드 탭 카테고리 선택을 드롭다운 → 버튼 그리드로 변경
 - v6.6: AI 키워드 탭 카테고리 복수 선택(토글) 지원, 결과에 카테고리 칼럼 추가
+- v6.7: AI 키 저장 시 공백 제거(strip), API 오류 메시지에 실제 응답 본문 표시
+- v6.8: 클로드 제거(결제 부담), 제미나이 전용으로 정리 + 모델명 2.0(폐기)→2.5-flash 수정
 """
 
 import streamlit as st
@@ -46,7 +48,7 @@ if "ai_keys_loaded" not in st.session_state:
 load_keys_html = """
 <script>
 (function() {
-    const keys = ['client_id', 'client_secret', 'ad_api_key', 'ad_secret_key', 'ad_customer_id', 'claude_api_key', 'gemini_api_key'];
+    const keys = ['client_id', 'client_secret', 'ad_api_key', 'ad_secret_key', 'ad_customer_id', 'gemini_api_key'];
     const loaded = {};
     let hasAny = false;
     keys.forEach(k => {
@@ -77,7 +79,7 @@ query_params = st.query_params
 # AI 키 (클로드/제미나이) 로드 — 네이버와 독립적으로 처리
 if not st.session_state.ai_keys_loaded:
     ai_loaded = {}
-    for k in ['claude_api_key', 'gemini_api_key']:
+    for k in ['gemini_api_key']:
         if k in query_params:
             ai_loaded[k] = query_params[k]
     if ai_loaded:
@@ -207,28 +209,22 @@ with st.sidebar:
             else:
                 st.error("⚠️ 5개 키 모두 입력하세요")
     
-    with st.expander("🤖 AI API 키 (선택) — 키워드 자동수집용", expanded=False):
-        st.caption("**Claude** (console.anthropic.com)")
-        claude_key = st.text_input("Claude API Key", value=st.session_state.ai_keys.get("claude_api_key", ""), type="password", key="claude_key_input")
-        st.caption("**Gemini** (aistudio.google.com)")
+    with st.expander("🤖 Gemini API 키 (선택) — 키워드 자동수집용", expanded=False):
+        st.caption("**Gemini** (aistudio.google.com) — 무료 발급")
         gemini_key = st.text_input("Gemini API Key", value=st.session_state.ai_keys.get("gemini_api_key", ""), type="password", key="gemini_key_input")
         
         c_ai1, c_ai2 = st.columns(2)
         with c_ai1:
             if st.button("💾 저장", use_container_width=True, key="save_ai_keys"):
-                ai_dict = {}
-                if claude_key:
-                    ai_dict["claude_api_key"] = claude_key
                 if gemini_key:
-                    ai_dict["gemini_api_key"] = gemini_key
-                if ai_dict:
+                    ai_dict = {"gemini_api_key": gemini_key.strip()}
                     st.session_state.ai_keys = ai_dict
                     save_ai_keys_to_localstorage(ai_dict)
                     st.success("✅ 저장됨")
                     time.sleep(1)
                     st.rerun()
                 else:
-                    st.error("키를 하나 이상 입력하세요")
+                    st.error("키를 입력하세요")
         with c_ai2:
             if st.button("🗑️ 삭제", use_container_width=True, key="clear_ai_keys"):
                 st.session_state.ai_keys = {}
@@ -237,13 +233,8 @@ with st.sidebar:
                 time.sleep(1)
                 st.rerun()
         
-        _ai_status = []
-        if st.session_state.ai_keys.get("claude_api_key"):
-            _ai_status.append("Claude ✅")
         if st.session_state.ai_keys.get("gemini_api_key"):
-            _ai_status.append("Gemini ✅")
-        if _ai_status:
-            st.caption(" · ".join(_ai_status))
+            st.caption("Gemini ✅")
     
     st.markdown("---")
     st.markdown("""**📋 이럴 때 어느 탭?**
@@ -1074,44 +1065,11 @@ def _extract_json(text):
         return None
 
 
-def generate_keywords_claude(category_label, api_key, n=12):
-    prompt = _build_ai_keyword_prompt(category_label, n)
-    try:
-        r = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 2000,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=60,
-        )
-        r.raise_for_status()
-        data = r.json()
-        text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
-        parsed = _extract_json(text)
-        if not parsed or "keywords" not in parsed:
-            return {"error": "응답 파싱 실패", "raw": text[:300]}
-        return {"keywords": parsed["keywords"]}
-    except requests.exceptions.HTTPError as e:
-        code = e.response.status_code
-        if code == 401:
-            return {"error": "Claude 인증 실패 (401) — API 키 확인"}
-        return {"error": f"Claude API 오류 ({code})"}
-    except Exception as e:
-        return {"error": f"Claude 호출 오류: {e}"}
-
-
 def generate_keywords_gemini(category_label, api_key, n=12):
     prompt = _build_ai_keyword_prompt(category_label, n)
     try:
         r = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
             headers={"content-type": "application/json"},
             json={"contents": [{"parts": [{"text": prompt}]}]},
             timeout=60,
@@ -1128,9 +1086,12 @@ def generate_keywords_gemini(category_label, api_key, n=12):
         return {"keywords": parsed["keywords"]}
     except requests.exceptions.HTTPError as e:
         code = e.response.status_code
-        if code in (400, 403):
-            return {"error": f"Gemini 인증/권한 오류 ({code}) — API 키 확인"}
-        return {"error": f"Gemini API 오류 ({code})"}
+        try:
+            body = e.response.json()
+            detail = body.get("error", {}).get("message", "") or str(body)[:200]
+        except Exception:
+            detail = e.response.text[:200]
+        return {"error": f"Gemini API 오류 ({code}): {detail}"}
     except Exception as e:
         return {"error": f"Gemini 호출 오류: {e}"}
 
@@ -1835,14 +1796,14 @@ with tab_cal:
 
 # ============ 탭: AI 키워드 (모델별) ============
 with tab_ai:
-    st.info("""🤖 **클로드·제미나이가 각각 키워드를 발굴** → 네이버 실측(검색량·문서수·난이도)으로 검증합니다.  
-    두 모델 결과를 **합치지 않고 따로** 보여주니, 어느 모델이 실제 검색되는 키워드를 잘 뽑는지 비교하세요.  
-    🟢 AI는 '후보 발상'만 — 최종 판정은 네이버 실측입니다 (AI 추정 등급은 믿지 않음).""")
+    st.info("""🤖 **제미나이가 키워드를 발굴** → 네이버 실측(검색량·문서수·난이도)으로 검증합니다.  
+    🟢 AI는 '후보 발상'만 — 최종 판정은 네이버 실측입니다 (AI 추정 등급은 믿지 않음).  
+    무료 한도(분당 호출 수)가 있어, 카테고리를 너무 많이 한꺼번에 돌리면 429가 날 수 있어요.""")
 
     if not st.session_state.api_configured:
         st.warning("👈 먼저 네이버 API 키를 입력하세요 (실측에 필요)")
-    elif not (st.session_state.ai_keys.get("claude_api_key") or st.session_state.ai_keys.get("gemini_api_key")):
-        st.warning("👈 사이드바 '🤖 AI API 키'에서 클로드 또는 제미나이 키를 입력하세요")
+    elif not st.session_state.ai_keys.get("gemini_api_key"):
+        st.warning("👈 사이드바 '🤖 Gemini API 키'에서 키를 입력하세요 (무료 발급)")
     else:
         _ai_cats = list(CATEGORY_NEWS_QUERIES.keys())
         if "ai_cat_selected" not in st.session_state:
@@ -1877,82 +1838,48 @@ with tab_ai:
             st.caption("⚠️ 카테고리를 하나 이상 선택하세요")
         ai_n = st.slider("모델당·카테고리당 키워드 개수", 6, 20, 12, key="ai_n_slider")
 
-        has_claude = bool(st.session_state.ai_keys.get("claude_api_key"))
         has_gemini = bool(st.session_state.ai_keys.get("gemini_api_key"))
 
         if st.button("🚀 AI 키워드 생성 + 네이버 실측", type="primary", use_container_width=True, key="run_ai_kw"):
             if not ai_cats_sel:
                 st.warning("카테고리를 하나 이상 선택하세요")
+            elif not has_gemini:
+                st.warning("사이드바에서 Gemini API 키를 먼저 입력하세요")
             else:
-                st.session_state["ai_kw_claude"] = None
                 st.session_state["ai_kw_gemini"] = None
                 _total = len(ai_cats_sel)
+                _g_rows, _g_err = [], None
+                for _gi, _cat in enumerate(ai_cats_sel):
+                    with st.spinner(f"🔵 제미나이 키워드 발굴+실측 ({_gi+1}/{_total}): {_cat}"):
+                        g_res = generate_keywords_gemini(_cat, st.session_state.ai_keys["gemini_api_key"], ai_n)
+                        if g_res.get("error"):
+                            _g_err = g_res["error"]
+                            continue
+                        for _row in measure_ai_keywords(g_res["keywords"], st.session_state.api_keys):
+                            _row = {"카테고리": _cat, **_row}
+                            _g_rows.append(_row)
+                if _g_rows:
+                    st.session_state["ai_kw_gemini"] = {"rows": _g_rows}
+                elif _g_err:
+                    st.session_state["ai_kw_gemini"] = {"error": _g_err}
 
-                if has_claude:
-                    _c_rows, _c_err = [], None
-                    for _ci, _cat in enumerate(ai_cats_sel):
-                        with st.spinner(f"🟣 클로드 키워드 발굴+실측 ({_ci+1}/{_total}): {_cat}"):
-                            c_res = generate_keywords_claude(_cat, st.session_state.ai_keys["claude_api_key"], ai_n)
-                            if c_res.get("error"):
-                                _c_err = c_res["error"]
-                                continue
-                            for _row in measure_ai_keywords(c_res["keywords"], st.session_state.api_keys):
-                                _row = {"카테고리": _cat, **_row}
-                                _c_rows.append(_row)
-                    if _c_rows:
-                        st.session_state["ai_kw_claude"] = {"rows": _c_rows}
-                    elif _c_err:
-                        st.session_state["ai_kw_claude"] = {"error": _c_err}
-
-                if has_gemini:
-                    _g_rows, _g_err = [], None
-                    for _gi, _cat in enumerate(ai_cats_sel):
-                        with st.spinner(f"🔵 제미나이 키워드 발굴+실측 ({_gi+1}/{_total}): {_cat}"):
-                            g_res = generate_keywords_gemini(_cat, st.session_state.ai_keys["gemini_api_key"], ai_n)
-                            if g_res.get("error"):
-                                _g_err = g_res["error"]
-                                continue
-                            for _row in measure_ai_keywords(g_res["keywords"], st.session_state.api_keys):
-                                _row = {"카테고리": _cat, **_row}
-                                _g_rows.append(_row)
-                    if _g_rows:
-                        st.session_state["ai_kw_gemini"] = {"rows": _g_rows}
-                    elif _g_err:
-                        st.session_state["ai_kw_gemini"] = {"error": _g_err}
-
-        col_c, col_g = st.columns(2)
-
-        with col_c:
-            st.markdown("### 🟣 클로드")
-            cdata = st.session_state.get("ai_kw_claude")
-            if cdata is None:
-                st.caption("아직 생성 안 함" if has_claude else "클로드 키 없음")
-            elif cdata.get("error"):
-                st.error(cdata["error"])
-            elif cdata.get("rows"):
-                df_c = pd.DataFrame(cdata["rows"])
-                st.dataframe(df_c, use_container_width=True, hide_index=True)
-                st.download_button("⬇️ 클로드 CSV", df_c.to_csv(index=False).encode("utf-8-sig"),
-                                   "claude_keywords.csv", "text/csv", key="dl_claude")
-            else:
-                st.caption("결과 없음")
-
-        with col_g:
-            st.markdown("### 🔵 제미나이")
-            gdata = st.session_state.get("ai_kw_gemini")
-            if gdata is None:
-                st.caption("아직 생성 안 함" if has_gemini else "제미나이 키 없음")
-            elif gdata.get("error"):
-                st.error(gdata["error"])
-            elif gdata.get("rows"):
-                df_g = pd.DataFrame(gdata["rows"])
-                st.dataframe(df_g, use_container_width=True, hide_index=True)
-                st.download_button("⬇️ 제미나이 CSV", df_g.to_csv(index=False).encode("utf-8-sig"),
-                                   "gemini_keywords.csv", "text/csv", key="dl_gemini")
-            else:
-                st.caption("결과 없음")
+        st.markdown("### 🔵 제미나이 결과")
+        gdata = st.session_state.get("ai_kw_gemini")
+        if gdata is None:
+            st.caption("아직 생성 안 함" if has_gemini else "Gemini 키 없음")
+        elif gdata.get("error"):
+            st.error(gdata["error"])
+            if "429" in str(gdata["error"]):
+                st.info("⏳ 429 = 무료 한도 초과(분당 호출 수). 1~2분 기다렸다가 다시 시도하거나, 카테고리를 줄여보세요.")
+        elif gdata.get("rows"):
+            df_g = pd.DataFrame(gdata["rows"])
+            st.dataframe(df_g, use_container_width=True, hide_index=True)
+            st.download_button("⬇️ 제미나이 CSV", df_g.to_csv(index=False).encode("utf-8-sig"),
+                               "gemini_keywords.csv", "text/csv", key="dl_gemini")
+        else:
+            st.caption("결과 없음")
 
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.6 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(클로드·제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.8 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
