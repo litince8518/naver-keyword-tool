@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.9
+키워드 종합 분석기 v6.11
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -10,6 +10,8 @@
 - v6.7: AI 키 저장 시 공백 제거(strip), API 오류 메시지에 실제 응답 본문 표시
 - v6.8: 클로드 제거(결제 부담), 제미나이 전용으로 정리 + 모델명 2.0(폐기)→2.5-flash 수정
 - v6.9: 제미나이 프롬프트 수정 — 문장형 대신 2~4단어 짧은 키워드 강제(네이버 검색량 측정 가능하게)
+- v6.10: 시드 텍스트 버그 수정 — 블로그(라디오) 변경이 복사 텍스트에 반영되도록 text_area key 제거
+- v6.11: 키워드 검증 탭 순서 변경 — 블로그 선택을 키워드 입력 위로 올림(블로그 먼저 → 검증)
 """
 
 import streamlit as st
@@ -1217,7 +1219,16 @@ with tab1:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
     else:
         st.info("🎯 **쓸 키워드를 이미 정했을 때** — 이 키워드로 글 쓰면 노출될지, 검색량·경쟁·문서수를 종합해 판정합니다.  \n　🟢 네이버 데이터 (검색 API + 검색광고 API)")
-        keyword = st.text_input("분석할 키워드", placeholder="예: 다이어트", key="single_kw")
+
+        blog_pick = st.radio(
+            "① 어느 블로그에 쓸 글인가요?",
+            list(BLOG_CHOICES.keys()),
+            horizontal=True,
+            key="unified_blog_pick",
+        )
+        cfg = BLOG_CHOICES[blog_pick]
+
+        keyword = st.text_input("② 분석할 키워드", placeholder="예: 다이어트", key="single_kw")
         
         if st.button("🔍 분석 시작", type="primary", use_container_width=True, key="single_btn"):
             if not keyword.strip():
@@ -1275,14 +1286,7 @@ with tab1:
         if st.session_state.get("last_result"):
             lr = st.session_state["last_result"]
             st.markdown("---")
-            st.subheader("🎯 이 키워드, 내 블로그에 쓸까?")
-            blog_pick = st.radio(
-                "블로그를 고르면 합격 판정과 blog_ai_writer 텍스트가 함께 맞춰집니다",
-                list(BLOG_CHOICES.keys()),
-                horizontal=True,
-                key="unified_blog_pick",
-            )
-            cfg = BLOG_CHOICES[blog_pick]
+            st.subheader(f"🎯 이 키워드, '{blog_pick}'에 쓸까?")
             verdict = judge_keyword(lr, cfg["stage"])
             if verdict["grade"] == "합격":
                 st.success(f"{verdict['emoji']} **{verdict['grade']}** — 이 블로그에 쓰기 좋은 키워드예요")
@@ -1300,7 +1304,7 @@ with tab1:
                 "복사 → blog_ai_writer 자막칸에 붙여넣으면 키워드·카테고리·검색의도가 자동 설정됩니다."
             )
             seed_text = build_seed_text(lr, cfg["profile"])
-            st.text_area("📋 복사할 텍스트 (아래 내용을 자막칸에 붙여넣기)", seed_text, height=140, key="bridge_seed")
+            st.text_area("📋 복사할 텍스트 (아래 내용을 자막칸에 붙여넣기)", seed_text, height=140)
             st.caption("💡 blog_ai_writer에서 카테고리·의도가 다르게 잡히면 그 칸만 직접 바꾸면 됩니다.")
 
 # ============ 탭2: 네이버 일괄 ============
@@ -1892,4 +1896,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.9 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.11 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
