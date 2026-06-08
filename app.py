@@ -1,7 +1,11 @@
 """
-키워드 종합 분석기 v6
+키워드 종합 분석기 v6.5
 ====================
-네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
+네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집
+
+[변경 이력]
+- v6.4: AI 키워드 탭 추가 (클로드·제미나이 각각 발굴 → 네이버 실측, 모델별 따로 출력)
+- v6.5: AI 키워드 탭 카테고리 선택을 드롭다운 → 버튼 그리드로 변경
 """
 
 import streamlit as st
@@ -1839,11 +1843,28 @@ with tab_ai:
     elif not (st.session_state.ai_keys.get("claude_api_key") or st.session_state.ai_keys.get("gemini_api_key")):
         st.warning("👈 사이드바 '🤖 AI API 키'에서 클로드 또는 제미나이 키를 입력하세요")
     else:
-        ai_cat = st.selectbox(
-            "카테고리 선택",
-            list(CATEGORY_NEWS_QUERIES.keys()),
-            key="ai_cat_select",
-        )
+        _ai_cats = list(CATEGORY_NEWS_QUERIES.keys())
+        if "ai_cat_selected" not in st.session_state:
+            st.session_state.ai_cat_selected = _ai_cats[0]
+
+        st.markdown("**카테고리 선택** (버튼 클릭)")
+        _per_row = 3
+        for _i in range(0, len(_ai_cats), _per_row):
+            _cols = st.columns(_per_row)
+            for _j, _cat in enumerate(_ai_cats[_i:_i + _per_row]):
+                with _cols[_j]:
+                    _is_sel = (st.session_state.ai_cat_selected == _cat)
+                    if st.button(
+                        ("✅ " if _is_sel else "") + _cat,
+                        key=f"ai_cat_btn_{_i + _j}",
+                        use_container_width=True,
+                        type=("primary" if _is_sel else "secondary"),
+                    ):
+                        st.session_state.ai_cat_selected = _cat
+                        st.rerun()
+
+        ai_cat = st.session_state.ai_cat_selected
+        st.caption(f"선택됨: **{ai_cat}**")
         ai_n = st.slider("모델당 키워드 개수", 6, 20, 12, key="ai_n_slider")
 
         has_claude = bool(st.session_state.ai_keys.get("claude_api_key"))
@@ -1906,4 +1927,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.0 | 네이버 + 구글 + 데이터랩 + 트렌드 발굴")
+st.caption("💡 키워드 종합 분석기 v6.5 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(클로드·제미나이)")
