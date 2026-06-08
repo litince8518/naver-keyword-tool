@@ -1,11 +1,12 @@
 """
-키워드 종합 분석기 v6.5
+키워드 종합 분석기 v6.6
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집
 
 [변경 이력]
 - v6.4: AI 키워드 탭 추가 (클로드·제미나이 각각 발굴 → 네이버 실측, 모델별 따로 출력)
 - v6.5: AI 키워드 탭 카테고리 선택을 드롭다운 → 버튼 그리드로 변경
+- v6.6: AI 키워드 탭 카테고리 복수 선택(토글) 지원, 결과에 카테고리 칼럼 추가
 """
 
 import streamlit as st
@@ -1845,52 +1846,79 @@ with tab_ai:
     else:
         _ai_cats = list(CATEGORY_NEWS_QUERIES.keys())
         if "ai_cat_selected" not in st.session_state:
-            st.session_state.ai_cat_selected = _ai_cats[0]
+            st.session_state.ai_cat_selected = [_ai_cats[0]]
+        # 구버전(문자열) 호환 — 리스트로 승격
+        if isinstance(st.session_state.ai_cat_selected, str):
+            st.session_state.ai_cat_selected = [st.session_state.ai_cat_selected]
 
-        st.markdown("**카테고리 선택** (버튼 클릭)")
+        st.markdown("**카테고리 선택** (여러 개 클릭 가능 · 다시 클릭하면 해제)")
         _per_row = 3
         for _i in range(0, len(_ai_cats), _per_row):
             _cols = st.columns(_per_row)
             for _j, _cat in enumerate(_ai_cats[_i:_i + _per_row]):
                 with _cols[_j]:
-                    _is_sel = (st.session_state.ai_cat_selected == _cat)
+                    _is_sel = (_cat in st.session_state.ai_cat_selected)
                     if st.button(
                         ("✅ " if _is_sel else "") + _cat,
                         key=f"ai_cat_btn_{_i + _j}",
                         use_container_width=True,
                         type=("primary" if _is_sel else "secondary"),
                     ):
-                        st.session_state.ai_cat_selected = _cat
+                        if _is_sel:
+                            st.session_state.ai_cat_selected.remove(_cat)
+                        else:
+                            st.session_state.ai_cat_selected.append(_cat)
                         st.rerun()
 
-        ai_cat = st.session_state.ai_cat_selected
-        st.caption(f"선택됨: **{ai_cat}**")
-        ai_n = st.slider("모델당 키워드 개수", 6, 20, 12, key="ai_n_slider")
+        ai_cats_sel = st.session_state.ai_cat_selected
+        if ai_cats_sel:
+            st.caption(f"선택됨 ({len(ai_cats_sel)}개): **{', '.join(ai_cats_sel)}**")
+        else:
+            st.caption("⚠️ 카테고리를 하나 이상 선택하세요")
+        ai_n = st.slider("모델당·카테고리당 키워드 개수", 6, 20, 12, key="ai_n_slider")
 
         has_claude = bool(st.session_state.ai_keys.get("claude_api_key"))
         has_gemini = bool(st.session_state.ai_keys.get("gemini_api_key"))
 
         if st.button("🚀 AI 키워드 생성 + 네이버 실측", type="primary", use_container_width=True, key="run_ai_kw"):
-            st.session_state["ai_kw_claude"] = None
-            st.session_state["ai_kw_gemini"] = None
+            if not ai_cats_sel:
+                st.warning("카테고리를 하나 이상 선택하세요")
+            else:
+                st.session_state["ai_kw_claude"] = None
+                st.session_state["ai_kw_gemini"] = None
+                _total = len(ai_cats_sel)
 
-            if has_claude:
-                with st.spinner("🟣 클로드가 키워드 발굴 중..."):
-                    c_res = generate_keywords_claude(ai_cat, st.session_state.ai_keys["claude_api_key"], ai_n)
-                if c_res.get("error"):
-                    st.session_state["ai_kw_claude"] = {"error": c_res["error"]}
-                else:
-                    with st.spinner(f"🟣 클로드 키워드 {len(c_res['keywords'])}개 네이버 실측 중..."):
-                        st.session_state["ai_kw_claude"] = {"rows": measure_ai_keywords(c_res["keywords"], st.session_state.api_keys)}
+                if has_claude:
+                    _c_rows, _c_err = [], None
+                    for _ci, _cat in enumerate(ai_cats_sel):
+                        with st.spinner(f"🟣 클로드 키워드 발굴+실측 ({_ci+1}/{_total}): {_cat}"):
+                            c_res = generate_keywords_claude(_cat, st.session_state.ai_keys["claude_api_key"], ai_n)
+                            if c_res.get("error"):
+                                _c_err = c_res["error"]
+                                continue
+                            for _row in measure_ai_keywords(c_res["keywords"], st.session_state.api_keys):
+                                _row = {"카테고리": _cat, **_row}
+                                _c_rows.append(_row)
+                    if _c_rows:
+                        st.session_state["ai_kw_claude"] = {"rows": _c_rows}
+                    elif _c_err:
+                        st.session_state["ai_kw_claude"] = {"error": _c_err}
 
-            if has_gemini:
-                with st.spinner("🔵 제미나이가 키워드 발굴 중..."):
-                    g_res = generate_keywords_gemini(ai_cat, st.session_state.ai_keys["gemini_api_key"], ai_n)
-                if g_res.get("error"):
-                    st.session_state["ai_kw_gemini"] = {"error": g_res["error"]}
-                else:
-                    with st.spinner(f"🔵 제미나이 키워드 {len(g_res['keywords'])}개 네이버 실측 중..."):
-                        st.session_state["ai_kw_gemini"] = {"rows": measure_ai_keywords(g_res["keywords"], st.session_state.api_keys)}
+                if has_gemini:
+                    _g_rows, _g_err = [], None
+                    for _gi, _cat in enumerate(ai_cats_sel):
+                        with st.spinner(f"🔵 제미나이 키워드 발굴+실측 ({_gi+1}/{_total}): {_cat}"):
+                            g_res = generate_keywords_gemini(_cat, st.session_state.ai_keys["gemini_api_key"], ai_n)
+                            if g_res.get("error"):
+                                _g_err = g_res["error"]
+                                continue
+                            for _row in measure_ai_keywords(g_res["keywords"], st.session_state.api_keys):
+                                _row = {"카테고리": _cat, **_row}
+                                _g_rows.append(_row)
+                    if _g_rows:
+                        st.session_state["ai_kw_gemini"] = {"rows": _g_rows}
+                    elif _g_err:
+                        st.session_state["ai_kw_gemini"] = {"error": _g_err}
 
         col_c, col_g = st.columns(2)
 
@@ -1927,4 +1955,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.5 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(클로드·제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.6 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(클로드·제미나이)")
