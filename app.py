@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.11
+키워드 종합 분석기 v6.12
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -12,6 +12,7 @@
 - v6.9: 제미나이 프롬프트 수정 — 문장형 대신 2~4단어 짧은 키워드 강제(네이버 검색량 측정 가능하게)
 - v6.10: 시드 텍스트 버그 수정 — 블로그(라디오) 변경이 복사 텍스트에 반영되도록 text_area key 제거
 - v6.11: 키워드 검증 탭 순서 변경 — 블로그 선택을 키워드 입력 위로 올림(블로그 먼저 → 검증)
+- v6.12: 시드 텍스트 버그 수정 — reviewheart 힌트의 '후기·추천'(카테고리를 에세이/리뷰로 오분류시키던 단어) 제거, CAT-D(육아)+INT-1(혜택·비용)+정보성 신호어로 교체. cat_hint 명사 나열을 문장으로 녹여 자막 꼬리말 어색함 제거. (정책글이 '신청'을 메인키워드·에세이로 잘못 잡던 문제 해결)
 """
 
 import streamlit as st
@@ -408,8 +409,10 @@ BLOG_PROFILES = {
         "intent_hint": "방법 해결 설정 오류 사용법",
     },
     "reviewheart (육아·정책·리뷰)": {
-        "cat_hint": "육아 아이 정책 지원금 신청 혜택 후기 추천",
-        "intent_hint": "신청 후기 비교 추천 방법",
+        # CAT-D(육아·교육) 신호어 위주 + INT-1(혜택·비용) 유도.
+        # 카테고리를 에세이/리뷰로 흔드는 '후기·추천'은 넣지 않는다(오분류 원인).
+        "cat_hint": "육아 아이 자녀 부모 정책 지원금 혜택 대상 금액",
+        "intent_hint": "신청 대상 금액 기준 정리",
     },
     "(자동 감지)": {"cat_hint": "", "intent_hint": ""},
 }
@@ -505,12 +508,17 @@ def build_seed_text(result, blog_profile="(자동 감지)"):
     prof = BLOG_PROFILES.get(blog_profile, BLOG_PROFILES["(자동 감지)"])
 
     rel_str = ", ".join(rel_words) if rel_words else kw
+    intent_part = (
+        f"{prof['intent_hint']}을 중심으로 자세히 다룹니다. "
+        if prof['intent_hint'] else "핵심만 자세히 다룹니다. "
+    )
+    cat_part = f"{kw} 관련 {prof['cat_hint']} 정보를 찾는 분께 도움이 됩니다." if prof['cat_hint'] else ""
     seed = (
         f"{kw}에 대해 검색하는 사람들이 많습니다. "
         f"{kw} 관련해서 함께 많이 찾는 키워드로는 {rel_str} 등이 있습니다. "
         f"이 글에서는 {kw}의 핵심 내용을 정리하고, "
-        f"{prof['intent_hint']}을 중심으로 자세히 다룹니다. "
-        f"{prof['cat_hint']}"
+        f"{intent_part}"
+        f"{cat_part}"
     ).strip()
     return seed
 
@@ -1896,4 +1904,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.11 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.12 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
