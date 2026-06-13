@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.13
+키워드 종합 분석기 v6.14
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -14,6 +14,7 @@
 - v6.11: 키워드 검증 탭 순서 변경 — 블로그 선택을 키워드 입력 위로 올림(블로그 먼저 → 검증)
 - v6.12: 시드 텍스트 버그 수정 — reviewheart 힌트의 '후기·추천'(카테고리를 에세이/리뷰로 오분류시키던 단어) 제거, CAT-D(육아)+INT-1(혜택·비용)+정보성 신호어로 교체. cat_hint 명사 나열을 문장으로 녹여 자막 꼬리말 어색함 제거. (정책글이 '신청'을 메인키워드·에세이로 잘못 잡던 문제 해결)
 - v6.13: 시드 텍스트 의도 고정 버그 수정 — reviewheart의 cat_hint/intent_hint에 박힌 INT-1(지원금·혜택·금액·신청) 단어가 모든 시드에 들어가 검색의도가 늘 '가격확인'·성격이 늘 '정보성'으로 고정되던 문제. 프로필은 카테고리(CAT) 신호어만 담고, 검색의도·성격은 키워드 자신과 연관어가 정하게 함(정책 키워드는 연관어에 신청·금액이 들어와 자연히 INT-1 유지, 육아·교육·시기형 키워드는 제대로 분류됨).
+- v6.14: 시드에 세부 키워드 주입 — 검증 탭 분석 시 자동완성 세부키워드(아동수당→신청·언제까지·계좌변경·지급일 등)를 함께 수집해 시드의 연관어 자리에 넣음. 맨 키워드엔 의도가 없어 검색의도가 늘 한 값으로 고정되던 문제 해결(세부어가 의도를 정함). ※ 넓은 키워드는 다의도라 여전히 흐릴 수 있음 → 합격한 '세부 키워드'로 글 쓰면 의도가 또렷해짐.
 """
 
 import streamlit as st
@@ -502,16 +503,20 @@ def judge_keyword(result, blog_stage="신규 블로그 (ioneteam 등)"):
     return {"grade": grade, "emoji": emoji, "reasons": reasons, "points": points}
 
 
-def build_seed_text(result, blog_profile="(자동 감지)"):
+def build_seed_text(result, blog_profile="(자동 감지)", sub_keywords=None):
     kw = result.get("keyword", "")
-    rel = result.get("related_keywords", []) or []
-    rel_words = [r.get("키워드", "") for r in rel[:8] if r.get("키워드")]
     prof = BLOG_PROFILES.get(blog_profile, BLOG_PROFILES["(자동 감지)"])
 
+    # v6.14: 검색의도 신호는 '세부/연관 키워드'에서 온다(맨 키워드엔 의도가 없음).
+    #   자동완성 세부키워드(신청·언제까지·계좌변경 등 의도어가 풍부)를 우선 쓰고,
+    #   없으면 검색광고 연관어로 폴백. 이 키워드들이 시드의 검색의도를 정한다.
+    #   (v6.13: 정적 의도 문구(신청·금액·기준·정리) 박던 방식 제거 → 키워드 자신+세부어가 정하게)
+    words = [w for w in (sub_keywords or []) if w]
+    if not words:
+        rel = result.get("related_keywords", []) or []
+        words = [r.get("키워드", "") for r in rel if r.get("키워드")]
+    rel_words = words[:10]
     rel_str = ", ".join(rel_words) if rel_words else kw
-    # v6.13: 검색의도·성격을 강제하던 정적 문구(신청·금액·기준·정리) 제거.
-    #   카테고리 신호만 가볍게 깔고, 의도·성격은 키워드 자신 + 연관어(실제 함께 검색되는 말)가 정하게 둔다.
-    #   → 연관어가 '신청·금액'이면 자연히 가격확인으로, '대기·시기'면 시기형으로 분류된다.
     cat_part = f"{prof['cat_hint']} 분야의 {kw} 정보입니다. " if prof.get('cat_hint') else ""
     seed = (
         f"{kw}에 대해 검색하는 사람들이 많습니다. "
@@ -1287,6 +1292,12 @@ with tab1:
                         rdf["월간검색"] = rdf["월간검색"].apply(lambda x: f"{x:,}")
                         st.dataframe(rdf, hide_index=True, use_container_width=True)
 
+                    # 세부 키워드도 함께 수집해 시드의 '검색의도 신호'로 쓴다 (v6.14)
+                    try:
+                        _sub = collect_sub_keywords(result["keyword"], st.session_state.api_keys, limit=12)
+                        result["sub_keywords"] = _sub.get("keywords", []) if not _sub.get("error") else []
+                    except Exception:
+                        result["sub_keywords"] = []
                     # 분석 결과를 세션에 저장 (다리 블록이 재실행돼도 유지)
                     st.session_state["last_result"] = result
 
@@ -1311,7 +1322,7 @@ with tab1:
                 f"'{lr['keyword']}' 분석 결과를 blog_ai_writer 자막칸에 붙일 텍스트로 만듭니다. "
                 "복사 → blog_ai_writer 자막칸에 붙여넣으면 키워드·카테고리·검색의도가 자동 설정됩니다."
             )
-            seed_text = build_seed_text(lr, cfg["profile"])
+            seed_text = build_seed_text(lr, cfg["profile"], sub_keywords=lr.get("sub_keywords"))
             st.text_area("📋 복사할 텍스트 (아래 내용을 자막칸에 붙여넣기)", seed_text, height=140)
             st.caption("💡 blog_ai_writer에서 카테고리·의도가 다르게 잡히면 그 칸만 직접 바꾸면 됩니다.")
 
