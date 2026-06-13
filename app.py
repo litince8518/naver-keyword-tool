@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.12
+키워드 종합 분석기 v6.13
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -13,6 +13,7 @@
 - v6.10: 시드 텍스트 버그 수정 — 블로그(라디오) 변경이 복사 텍스트에 반영되도록 text_area key 제거
 - v6.11: 키워드 검증 탭 순서 변경 — 블로그 선택을 키워드 입력 위로 올림(블로그 먼저 → 검증)
 - v6.12: 시드 텍스트 버그 수정 — reviewheart 힌트의 '후기·추천'(카테고리를 에세이/리뷰로 오분류시키던 단어) 제거, CAT-D(육아)+INT-1(혜택·비용)+정보성 신호어로 교체. cat_hint 명사 나열을 문장으로 녹여 자막 꼬리말 어색함 제거. (정책글이 '신청'을 메인키워드·에세이로 잘못 잡던 문제 해결)
+- v6.13: 시드 텍스트 의도 고정 버그 수정 — reviewheart의 cat_hint/intent_hint에 박힌 INT-1(지원금·혜택·금액·신청) 단어가 모든 시드에 들어가 검색의도가 늘 '가격확인'·성격이 늘 '정보성'으로 고정되던 문제. 프로필은 카테고리(CAT) 신호어만 담고, 검색의도·성격은 키워드 자신과 연관어가 정하게 함(정책 키워드는 연관어에 신청·금액이 들어와 자연히 INT-1 유지, 육아·교육·시기형 키워드는 제대로 분류됨).
 """
 
 import streamlit as st
@@ -403,18 +404,18 @@ def analyze_keyword(keyword, keys):
 # 자연스러운 시드 문단으로 변환해준다. blog_ai_writer는 수정하지 않는다.
 
 # 블로그별 카테고리 신호 단어 (detectCategory 적중률을 높이기 위한 힌트)
+# v6.13: 각 프로필은 '카테고리(CAT) 신호어'만 담는다.
+#   검색의도(INT)·글 성격은 정적 힌트로 강제하지 않고 키워드 자신과 연관어가 정하게 둔다.
+#   (이전엔 cat_hint/intent_hint에 INT-1 단어(지원금·혜택·금액·신청)를 박아
+#    모든 시드가 '가격확인/정보성'으로 고정됐음 → 육아·교육·시기형 키워드까지 오분류)
 BLOG_PROFILES = {
     "ioneteam (IT 문제해결)": {
-        "cat_hint": "스마트폰 갤럭시 아이폰 노트북 앱 설정 오류 해결 방법",
-        "intent_hint": "방법 해결 설정 오류 사용법",
+        "cat_hint": "스마트폰 갤럭시 아이폰 노트북 앱 컴퓨터 IT",
     },
     "reviewheart (육아·정책·리뷰)": {
-        # CAT-D(육아·교육) 신호어 위주 + INT-1(혜택·비용) 유도.
-        # 카테고리를 에세이/리뷰로 흔드는 '후기·추천'은 넣지 않는다(오분류 원인).
-        "cat_hint": "육아 아이 자녀 부모 정책 지원금 혜택 대상 금액",
-        "intent_hint": "신청 대상 금액 기준 정리",
+        "cat_hint": "육아 자녀 교육 부모",
     },
-    "(자동 감지)": {"cat_hint": "", "intent_hint": ""},
+    "(자동 감지)": {"cat_hint": ""},
 }
 
 # ================================================
@@ -504,21 +505,20 @@ def judge_keyword(result, blog_stage="신규 블로그 (ioneteam 등)"):
 def build_seed_text(result, blog_profile="(자동 감지)"):
     kw = result.get("keyword", "")
     rel = result.get("related_keywords", []) or []
-    rel_words = [r.get("키워드", "") for r in rel[:6] if r.get("키워드")]
+    rel_words = [r.get("키워드", "") for r in rel[:8] if r.get("키워드")]
     prof = BLOG_PROFILES.get(blog_profile, BLOG_PROFILES["(자동 감지)"])
 
     rel_str = ", ".join(rel_words) if rel_words else kw
-    intent_part = (
-        f"{prof['intent_hint']}을 중심으로 자세히 다룹니다. "
-        if prof['intent_hint'] else "핵심만 자세히 다룹니다. "
-    )
-    cat_part = f"{kw} 관련 {prof['cat_hint']} 정보를 찾는 분께 도움이 됩니다." if prof['cat_hint'] else ""
+    # v6.13: 검색의도·성격을 강제하던 정적 문구(신청·금액·기준·정리) 제거.
+    #   카테고리 신호만 가볍게 깔고, 의도·성격은 키워드 자신 + 연관어(실제 함께 검색되는 말)가 정하게 둔다.
+    #   → 연관어가 '신청·금액'이면 자연히 가격확인으로, '대기·시기'면 시기형으로 분류된다.
+    cat_part = f"{prof['cat_hint']} 분야의 {kw} 정보입니다. " if prof.get('cat_hint') else ""
     seed = (
         f"{kw}에 대해 검색하는 사람들이 많습니다. "
         f"{kw} 관련해서 함께 많이 찾는 키워드로는 {rel_str} 등이 있습니다. "
-        f"이 글에서는 {kw}의 핵심 내용을 정리하고, "
-        f"{intent_part}"
+        f"이 글에서는 {kw}의 핵심 내용과 궁금한 점을 짚어봅니다. "
         f"{cat_part}"
+        f"{kw} 정보를 찾는 분께 도움이 됩니다."
     ).strip()
     return seed
 
