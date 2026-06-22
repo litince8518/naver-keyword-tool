@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.15
+키워드 종합 분석기 v6.16
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -15,7 +15,8 @@
 - v6.12: 시드 텍스트 버그 수정 — reviewheart 힌트의 '후기·추천'(카테고리를 에세이/리뷰로 오분류시키던 단어) 제거, CAT-D(육아)+INT-1(혜택·비용)+정보성 신호어로 교체. cat_hint 명사 나열을 문장으로 녹여 자막 꼬리말 어색함 제거. (정책글이 '신청'을 메인키워드·에세이로 잘못 잡던 문제 해결)
 - v6.13: 시드 텍스트 의도 고정 버그 수정 — reviewheart의 cat_hint/intent_hint에 박힌 INT-1(지원금·혜택·금액·신청) 단어가 모든 시드에 들어가 검색의도가 늘 '가격확인'·성격이 늘 '정보성'으로 고정되던 문제. 프로필은 카테고리(CAT) 신호어만 담고, 검색의도·성격은 키워드 자신과 연관어가 정하게 함(정책 키워드는 연관어에 신청·금액이 들어와 자연히 INT-1 유지, 육아·교육·시기형 키워드는 제대로 분류됨).
 - v6.14: 시드에 세부 키워드 주입 — 검증 탭 분석 시 자동완성 세부키워드(아동수당→신청·언제까지·계좌변경·지급일 등)를 함께 수집해 시드의 연관어 자리에 넣음. 맨 키워드엔 의도가 없어 검색의도가 늘 한 값으로 고정되던 문제 해결(세부어가 의도를 정함). ※ 넓은 키워드는 다의도라 여전히 흐릴 수 있음 → 합격한 '세부 키워드'로 글 쓰면 의도가 또렷해짐.
-- v6.15: 검증 탭 UI 개편 — 블로그명(ioneteam/reviewheart) 라벨 제거(카테고리 키·뉴스쿼리 키에서). 기존 "어느 블로그?" 단일 라디오(블로그명에 카테고리+단계 묶여있던 것)를 **'① 카테고리 선택 + ② 블로그 단계(신규/기존/기타)'** 공통 기준으로 분리. cat_hint는 카테고리에서 파생(`cat_hint_for`), 판정기준은 단계에서 파생(`stage_rule_key`, 기타=신규 기준). 선택값은 `st.query_params`(cat/stage)로 저장돼 새로고침에도 유지. `build_seed_text(result, cat_hint, sub_keywords)`로 시그니처 변경(BLOG_PROFILES·BLOG_CHOICES 의존 제거).
+- v6.15: 검증 탭 UI 개편 — 블로그명(ioneteam/reviewheart) 라벨 제거(카테고리 키·뉴스쿼리 키에서). 기존 "어느 블로그?" 단일 라디오(블로그명에 카테고리+단계 묶여있던 것)를 **'① 카테고리 선택 + ② 블로그 단계(신규/기존)'** 공통 기준으로 분리. cat_hint는 카테고리에서 파생(`cat_hint_for`), 판정기준은 단계가 곧 VERDICT_RULES 키(신규/기존). (기타는 신규와 기준이 동일해 제거) 선택값은 `st.query_params`(cat/stage)로 저장돼 새로고침에도 유지. `build_seed_text(result, cat_hint, sub_keywords)`로 시그니처 변경(BLOG_PROFILES·BLOG_CHOICES 의존 제거).
+- v6.16: v6.15 마감 정리 — API키 부트스트랩의 query_params.clear()를 '키 파라미터만 선택 삭제(del)'로 바꿔 cat/stage 선택 저장값이 새로고침에도 보존되게 함(전체 clear 시 날아가던 버그). 키워드 입력 라벨 중복(② 두 번 → ③ 분석할 키워드) 수정. ※ 이후 키워드 검색기도 수정 시마다 버전 +0.1.
 """
 
 import streamlit as st
@@ -104,7 +105,10 @@ if not st.session_state.api_configured and not st.session_state.keys_loaded_from
         st.session_state.api_keys = loaded_keys
         st.session_state.api_configured = True
         st.session_state.keys_loaded_from_browser = True
-        st.query_params.clear()
+        # v6.15: 키 파라미터만 URL에서 제거(전체 clear 시 cat/stage 선택 저장값까지 날아감)
+        for _k in expected:
+            if _k in st.query_params:
+                del st.query_params[_k]
     else:
         st.session_state.keys_loaded_from_browser = True
         components.html(load_keys_html, height=0)
@@ -437,10 +441,7 @@ VERDICT_RULES = {
 }
 
 # v6.15: 블로그명(ioneteam/reviewheart) 분리 → '카테고리 + 단계'를 공통 기준으로 선택.
-STAGE_OPTIONS = ["신규", "기존", "기타"]
-def stage_rule_key(stage):
-    """블로그 단계(신규/기존/기타) → 판정 기준 키. 기타=보수적으로 신규 기준."""
-    return "기존" if stage == "기존" else "신규"
+STAGE_OPTIONS = ["신규", "기존"]   # v6.15: 기타는 신규와 기준이 동일해 제거(블로그 단계는 신규/기존 둘뿐)
 
 def cat_hint_for(category_label):
     """선택한 카테고리 → blog_ai_writer detectCategory용 신호어(시드에 삽입)."""
@@ -1255,7 +1256,7 @@ with tab1:
         st.query_params["cat"] = cat_pick
         st.query_params["stage"] = stage_pick
 
-        keyword = st.text_input("② 분석할 키워드", placeholder="예: 다이어트", key="single_kw")
+        keyword = st.text_input("③ 분석할 키워드", placeholder="예: 다이어트", key="single_kw")
         
         if st.button("🔍 분석 시작", type="primary", use_container_width=True, key="single_btn"):
             if not keyword.strip():
@@ -1320,7 +1321,7 @@ with tab1:
             lr = st.session_state["last_result"]
             st.markdown("---")
             st.subheader(f"🎯 이 키워드, '{cat_pick} · {stage_pick}'에 쓸까?")
-            verdict = judge_keyword(lr, stage_rule_key(stage_pick))
+            verdict = judge_keyword(lr, stage_pick)
             if verdict["grade"] == "합격":
                 st.success(f"{verdict['emoji']} **{verdict['grade']}** — 이 블로그에 쓰기 좋은 키워드예요")
             elif verdict["grade"] == "보통":
@@ -1929,4 +1930,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.15 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.16 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
