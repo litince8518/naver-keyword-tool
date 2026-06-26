@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.16
+키워드 종합 분석기 v6.17
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -17,6 +17,7 @@
 - v6.14: 시드에 세부 키워드 주입 — 검증 탭 분석 시 자동완성 세부키워드(아동수당→신청·언제까지·계좌변경·지급일 등)를 함께 수집해 시드의 연관어 자리에 넣음. 맨 키워드엔 의도가 없어 검색의도가 늘 한 값으로 고정되던 문제 해결(세부어가 의도를 정함). ※ 넓은 키워드는 다의도라 여전히 흐릴 수 있음 → 합격한 '세부 키워드'로 글 쓰면 의도가 또렷해짐.
 - v6.15: 검증 탭 UI 개편 — 블로그명(ioneteam/reviewheart) 라벨 제거(카테고리 키·뉴스쿼리 키에서). 기존 "어느 블로그?" 단일 라디오(블로그명에 카테고리+단계 묶여있던 것)를 **'① 카테고리 선택 + ② 블로그 단계(신규/기존)'** 공통 기준으로 분리. cat_hint는 카테고리에서 파생(`cat_hint_for`), 판정기준은 단계가 곧 VERDICT_RULES 키(신규/기존). (기타는 신규와 기준이 동일해 제거) 선택값은 `st.query_params`(cat/stage)로 저장돼 새로고침에도 유지. `build_seed_text(result, cat_hint, sub_keywords)`로 시그니처 변경(BLOG_PROFILES·BLOG_CHOICES 의존 제거).
 - v6.16: v6.15 마감 정리 — API키 부트스트랩의 query_params.clear()를 '키 파라미터만 선택 삭제(del)'로 바꿔 cat/stage 선택 저장값이 새로고침에도 보존되게 함(전체 clear 시 날아가던 버그). 키워드 입력 라벨 중복(② 두 번 → ③ 분석할 키워드) 수정. ※ 이후 키워드 검색기도 수정 시마다 버전 +0.1.
+- v6.17: 세부 글감 파기 탭 합격 집계 버그 수정 — `"합격" in 판정`이 '불합격'에도 매칭돼 불합격을 합격으로 세던 문제(예: 실제 합격 0개인데 "합격 8개" 표시). 🟢 이모지로만 카운트하도록 변경.
 """
 
 import streamlit as st
@@ -1722,7 +1723,7 @@ with tab6:
         if st.session_state.get("sub_rows"):
             rows = st.session_state["sub_rows"]
             rows_sorted = sorted(rows, key=lambda x: x["_점수"], reverse=True)
-            pass_n = sum(1 for r in rows if "합격" in r["판정"])
+            pass_n = sum(1 for r in rows if "🟢" in r["판정"])  # v6.17: '불합격'에도 '합격'이 들어가 오집계되던 버그 수정(🟢만 카운트)
             st.success(f"✅ 분석 완료 — 합격 {pass_n}개 / 전체 {len(rows)}개")
 
             df = pd.DataFrame(rows_sorted)
@@ -1930,4 +1931,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.16 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.17 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
