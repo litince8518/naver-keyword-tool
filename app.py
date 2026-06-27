@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.17
+키워드 종합 분석기 v6.18
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -18,6 +18,7 @@
 - v6.15: 검증 탭 UI 개편 — 블로그명(ioneteam/reviewheart) 라벨 제거(카테고리 키·뉴스쿼리 키에서). 기존 "어느 블로그?" 단일 라디오(블로그명에 카테고리+단계 묶여있던 것)를 **'① 카테고리 선택 + ② 블로그 단계(신규/기존)'** 공통 기준으로 분리. cat_hint는 카테고리에서 파생(`cat_hint_for`), 판정기준은 단계가 곧 VERDICT_RULES 키(신규/기존). (기타는 신규와 기준이 동일해 제거) 선택값은 `st.query_params`(cat/stage)로 저장돼 새로고침에도 유지. `build_seed_text(result, cat_hint, sub_keywords)`로 시그니처 변경(BLOG_PROFILES·BLOG_CHOICES 의존 제거).
 - v6.16: v6.15 마감 정리 — API키 부트스트랩의 query_params.clear()를 '키 파라미터만 선택 삭제(del)'로 바꿔 cat/stage 선택 저장값이 새로고침에도 보존되게 함(전체 clear 시 날아가던 버그). 키워드 입력 라벨 중복(② 두 번 → ③ 분석할 키워드) 수정. ※ 이후 키워드 검색기도 수정 시마다 버전 +0.1.
 - v6.17: 세부 글감 파기 탭 합격 집계 버그 수정 — `"합격" in 판정`이 '불합격'에도 매칭돼 불합격을 합격으로 세던 문제(예: 실제 합격 0개인데 "합격 8개" 표시). 🟢 이모지로만 카운트하도록 변경.
+- v6.18: '틀린 탭 사용' 자동 안내 추가 — suggest_tab() 통일 배너로, 잘못된 탭에 키워드를 넣으면 더 맞는 탭을 추천. ①키워드 검증: 넓은 키워드(불합격+월검색≥3만)→세부 글감 파기 ②여러 개 검증: 전부 넓은 단어→세부 글감 파기 ③구글 트렌드: 1개만 입력→키워드 검증 ④누가 검색하나: 데이터 없음(검색량 적음)→키워드 검증 ⑤글감 찾기: 연관어≤1(좁은 단어)→세부 글감 파기 ⑥세부 글감 파기: 자동완성 0개→키워드 검증 / 합격 0개→씨앗 구체화 안내. (임계값은 조정 가능)
 """
 
 import streamlit as st
@@ -1154,6 +1155,15 @@ def measure_ai_keywords(kw_list, keys):
 # ================================================
 # 메인 영역 - 탭 5개
 # ================================================
+# ── v6.18: 잘못된 탭 사용이 감지되면 더 맞는 탭을 안내하는 통일 배너 ──
+def suggest_tab(reason, target_tab, action=""):
+    """reason(왜 이 탭이 안 맞나) + target_tab(추천 탭) + action(거기서 뭘 하면 되나)."""
+    msg = f"💡 **{reason}**  \n👉 더 맞는 곳은 **`{target_tab}`** 탭이에요"
+    if action:
+        msg += f" — {action}"
+    st.warning(msg)
+
+
 tab_home, tab5, tab6, tab1, tab2, tab3, tab4, tab_cal, tab_ai = st.tabs([
     "🏠 홈 · 뭐 쓸지 둘러보기", "🔥 글감 찾기 · 뭐가 뜨나", "🪓 세부 글감 파기",
     "🎯 키워드 검증 · 쓸까 말까", "📋 여러 개 한번에 검증",
@@ -1332,6 +1342,14 @@ with tab1:
             for r in verdict["reasons"]:
                 st.write(f"- {r}")
 
+            # v6.18: 너무 넓은 키워드(불합격 + 검색량 큼) → 세부 글감 파기 추천
+            if verdict["grade"] == "불합격" and lr.get("monthly_search", 0) >= 30000:
+                suggest_tab(
+                    f"'{lr['keyword']}'는 검색량이 큰 넓은 키워드라 이대로는 이기기 어려워요 (월 {lr['monthly_search']:,}회)",
+                    "🪓 세부 글감 파기",
+                    "이 단어를 넣어 이길 수 있는 세부 키워드로 쪼개보세요",
+                )
+
             st.markdown("---")
             st.subheader("✍️ blog_ai_writer로 보내기")
             st.caption(
@@ -1379,6 +1397,15 @@ with tab2:
                 df = pd.DataFrame(df_data)
                 st.success(f"✅ {len(results)}개 분석 완료")
                 st.dataframe(df, hide_index=True, use_container_width=True)
+
+                # v6.18: 후보가 전부 넓은 키워드면 → 세부 글감 파기 추천
+                _ok = [r for r in results if not r.get("error")]
+                if _ok and all(r.get("monthly_search", 0) >= 30000 for r in _ok):
+                    suggest_tab(
+                        "넣은 키워드가 다 검색량 큰 넓은 단어예요 — 그대로는 경쟁이 세요",
+                        "🪓 세부 글감 파기",
+                        "각 단어를 거기에 넣어 세부 키워드로 쪼개면 이기기 쉬워져요",
+                    )
                 csv = df.to_csv(index=False).encode("utf-8-sig")
                 st.download_button("📥 CSV 다운로드", csv,
                     file_name=f"keyword_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
@@ -1412,6 +1439,13 @@ with tab3:
         elif len(kws) > 5:
             st.error("최대 5개까지만 입력 가능합니다")
         else:
+            # v6.18: 비교 탭인데 1개만 넣었으면 → 단일 분석은 키워드 검증 추천
+            if len(kws) == 1:
+                suggest_tab(
+                    "구글 트렌드는 '여러 키워드 비교'용이에요 — 1개만 넣으면 비교가 안 돼요",
+                    "🎯 키워드 검증 · 쓸까 말까",
+                    "이 키워드 1개의 노출 가능성을 보려면 거기서 분석하세요 (아래는 단일 추이만)",
+                )
             with st.spinner(f"구글 트렌드 조회 중..."):
                 result = get_google_trends(kws, timeframe_map[timeframe_label], geo_map[geo])
             
@@ -1473,7 +1507,16 @@ with tab4:
                     st.error(f"❌ {result['error']}")
                 else:
                     st.success(f"✅ '{dl_keyword}' 인구통계 분석 완료 (최근 3개월 기준)")
-                    
+
+                    # v6.18: 검색량이 적어 인구통계가 비면 → 키워드 검증 추천
+                    _age = result.get("by_age") or {}
+                    if not _age or sum(_age.values()) == 0:
+                        suggest_tab(
+                            f"'{dl_keyword}'는 검색량이 적어 연령·성별 데이터가 잡히지 않아요",
+                            "🎯 키워드 검증 · 쓸까 말까",
+                            "먼저 이 키워드의 검색량부터 확인해보세요",
+                        )
+
                     # 1) 시간별 추이
                     if "time_trend" in result and result["time_trend"].get("results"):
                         st.subheader("📈 일별 검색 추이")
@@ -1572,6 +1615,14 @@ with tab5:
                         st.caption(f"연관 키워드 {len(keywords)}개 (씨앗 '{seed_kw}' 관련만). 트렌드 분석 시작...")
                     else:
                         st.caption(f"연관 키워드 {len(keywords)}개 (관련도 순). 트렌드 분석 시작...")
+
+                    # v6.18: 연관어가 씨앗 1개뿐이면(좁은 단어) → 세부 글감 파기 추천
+                    if len(keywords) <= 1:
+                        suggest_tab(
+                            f"'{seed_kw}'는 연관 키워드가 거의 없는 좁은 단어예요 (검색광고 데이터가 얇음)",
+                            "🪓 세부 글감 파기",
+                            "이 단어를 넣으면 자동완성으로 세부 키워드(요금·사고·후기 등)가 나와요",
+                        )
 
                     # 2) 각 키워드의 트렌드 방향 분석
                     progress = st.progress(0)
@@ -1694,6 +1745,14 @@ with tab6:
                     st.session_state["sub_source"] = sub_res["source"]
                     st.caption(f"수집 완료 ({sub_res['source']}): 세부 키워드 {len(sub_res['keywords'])}개")
 
+                    # v6.18: 자동완성이 안 나오면(너무 좁거나 오타) → 키워드 검증 추천
+                    if not sub_res["keywords"]:
+                        suggest_tab(
+                            f"'{sub_seed}'는 자동완성 세부 키워드가 안 나와요 (너무 좁거나 오타일 수 있어요)",
+                            "🎯 키워드 검증 · 쓸까 말까",
+                            "이 단어 자체를 직접 검증하거나, 한 단계 넓은 씨앗으로 바꿔보세요",
+                        )
+
                     if not sub_two_step:
                         # 전체 자동 분석 + 합격 판정
                         progress = st.progress(0)
@@ -1725,6 +1784,14 @@ with tab6:
             rows_sorted = sorted(rows, key=lambda x: x["_점수"], reverse=True)
             pass_n = sum(1 for r in rows if "🟢" in r["판정"])  # v6.17: '불합격'에도 '합격'이 들어가 오집계되던 버그 수정(🟢만 카운트)
             st.success(f"✅ 분석 완료 — 합격 {pass_n}개 / 전체 {len(rows)}개")
+
+            # v6.18: 🟢 합격이 0개면 씨앗이 너무 넓거나 경쟁이 센 분야 — 씨앗 조정 안내
+            if pass_n == 0 and rows:
+                st.warning(
+                    "💡 **🟢 합격이 하나도 없어요** — 씨앗이 너무 넓거나(예: '경제' → 신문사 이름만 나옴) "
+                    "경쟁이 센 분야예요. 씨앗을 **더 구체적으로** 바꾸거나(경제→전기요금·연말정산), "
+                    "🟡 보통 중 검색량이 받쳐주는 걸 골라 글을 써보세요."
+                )
 
             df = pd.DataFrame(rows_sorted)
             df_show = df.drop(columns=["_점수"]).copy()
@@ -1931,4 +1998,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.17 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.18 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
