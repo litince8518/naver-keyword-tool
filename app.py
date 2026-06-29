@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.18
+키워드 종합 분석기 v6.19
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -19,6 +19,7 @@
 - v6.16: v6.15 마감 정리 — API키 부트스트랩의 query_params.clear()를 '키 파라미터만 선택 삭제(del)'로 바꿔 cat/stage 선택 저장값이 새로고침에도 보존되게 함(전체 clear 시 날아가던 버그). 키워드 입력 라벨 중복(② 두 번 → ③ 분석할 키워드) 수정. ※ 이후 키워드 검색기도 수정 시마다 버전 +0.1.
 - v6.17: 세부 글감 파기 탭 합격 집계 버그 수정 — `"합격" in 판정`이 '불합격'에도 매칭돼 불합격을 합격으로 세던 문제(예: 실제 합격 0개인데 "합격 8개" 표시). 🟢 이모지로만 카운트하도록 변경.
 - v6.18: '틀린 탭 사용' 자동 안내 추가 — suggest_tab() 통일 배너로, 잘못된 탭에 키워드를 넣으면 더 맞는 탭을 추천. ①키워드 검증: 넓은 키워드(불합격+월검색≥3만)→세부 글감 파기 ②여러 개 검증: 전부 넓은 단어→세부 글감 파기 ③구글 트렌드: 1개만 입력→키워드 검증 ④누가 검색하나: 데이터 없음(검색량 적음)→키워드 검증 ⑤글감 찾기: 연관어≤1(좁은 단어)→세부 글감 파기 ⑥세부 글감 파기: 자동완성 0개→키워드 검증 / 합격 0개→씨앗 구체화 안내. (임계값은 조정 가능)
+- v6.19: 세부 글감 파기 'muhankey 스타일' 강화 — ① 연관어 개수 선택(20/50/100) ② "🔗 공식 연관어로 넓게 뽑기" 옵션(자동완성 대신 검색광고 연관어로 한 번에 많이, collect_sub_keywords(prefer_related=True)) ③ 비율(=문서수÷월간검색) 칼럼 추가(낮을수록 경쟁 대비 수요 좋음). 개수 많으면 ⚡2단계 권장 안내.
 """
 
 import streamlit as st
@@ -917,24 +918,30 @@ def get_autocomplete_keywords(seed):
     return {"error": None, "keywords": words}
 
 
-def collect_sub_keywords(seed, keys, limit=20):
+def collect_sub_keywords(seed, keys, limit=20, prefer_related=False):
     """
-    세부 키워드 수집. 자동완성 우선, 실패하면 공식 키워드도구 연관어로 폴백.
-    반환: {"source": "자동완성"|"공식 연관어", "keywords": [...], "error": None|str}
+    세부 키워드 수집. 기본은 자동완성(롱테일) 우선, 실패 시 공식 키워드도구 폴백.
+    v6.19: prefer_related=True면 공식 연관어(검색광고 키워드도구)를 우선 — 더 많은 연관어(예: 100개)가 필요할 때.
+    반환: {"source": ..., "keywords": [...], "error": None|str}
     """
-    ac = get_autocomplete_keywords(seed)
-    if not ac["error"] and ac["keywords"]:
-        # 씨앗을 포함하는 세부 키워드 우선 (롱테일)
-        kws = ac["keywords"][:limit]
-        return {"source": "자동완성", "keywords": kws, "error": None}
+    if not prefer_related:
+        ac = get_autocomplete_keywords(seed)
+        if not ac["error"] and ac["keywords"]:
+            # 씨앗을 포함하는 세부 키워드 우선 (롱테일)
+            return {"source": "자동완성", "keywords": ac["keywords"][:limit], "error": None}
 
-    # 폴백: 공식 키워드도구 연관어
+    # 공식 키워드도구 연관어 (prefer_related거나 자동완성 실패 시) — 수백 개까지 가능
     rel = get_related_keywords_list(seed, keys, limit=limit)
-    if rel.get("error"):
-        return {"source": None, "keywords": [],
-                "error": f"자동완성·공식 모두 실패 ({rel['error']})"}
-    kws = [k["키워드"] for k in rel["keywords"] if k.get("키워드")]
-    return {"source": "공식 연관어(폴백)", "keywords": kws, "error": None}
+    if not rel.get("error"):
+        kws = [k["키워드"] for k in rel["keywords"] if k.get("키워드")]
+        return {"source": ("공식 연관어" if prefer_related else "공식 연관어(폴백)"), "keywords": kws, "error": None}
+
+    # 공식도 실패: prefer_related였다면 자동완성으로 한 번 더 시도
+    if prefer_related:
+        ac = get_autocomplete_keywords(seed)
+        if not ac["error"] and ac["keywords"]:
+            return {"source": "자동완성(폴백)", "keywords": ac["keywords"][:limit], "error": None}
+    return {"source": None, "keywords": [], "error": f"세부 키워드 수집 실패 ({rel['error']})"}
 
 
 # ================================================
@@ -1725,6 +1732,18 @@ with tab6:
         with col_s2:
             sub_stage = st.selectbox("블로그 상태", list(VERDICT_RULES.keys()), key="sub_stage")
 
+        col_o1, col_o2 = st.columns([1, 2])
+        with col_o1:
+            sub_limit = st.selectbox(
+                "연관어 개수", [20, 50, 100], index=0, key="sub_limit",
+                help="많이 뽑을수록 후보는 늘지만 분석은 느려져요. 50·100개는 ⚡2단계 모드를 권장해요.",
+            )
+        with col_o2:
+            sub_wide = st.checkbox(
+                "🔗 공식 연관어로 넓게 뽑기 (자동완성 대신 — 한 번에 많이)",
+                value=False, key="sub_wide",
+                help="체크: 검색광고 연관어로 더 많은 키워드 수집(넓은 분야 적합). 해제: 자동완성 롱테일(구체 세부어 적합).",
+            )
         sub_two_step = st.checkbox(
             "⚡ 2단계로 빠르게 (먼저 수집만 → 고른 것만 정밀 분석)",
             value=False, key="sub_two_step",
@@ -1736,7 +1755,7 @@ with tab6:
                 st.error("키워드를 입력해주세요")
             else:
                 with st.spinner("세부 키워드 수집 중..."):
-                    sub_res = collect_sub_keywords(sub_seed, st.session_state.api_keys, limit=20)
+                    sub_res = collect_sub_keywords(sub_seed, st.session_state.api_keys, limit=sub_limit, prefer_related=sub_wide)
 
                 if sub_res.get("error"):
                     st.error(f"❌ {sub_res['error']}")
@@ -1748,17 +1767,19 @@ with tab6:
                     # v6.18: 자동완성이 안 나오면(너무 좁거나 오타) → 키워드 검증 추천
                     if not sub_res["keywords"]:
                         suggest_tab(
-                            f"'{sub_seed}'는 자동완성 세부 키워드가 안 나와요 (너무 좁거나 오타일 수 있어요)",
+                            f"'{sub_seed}'는 연관 세부 키워드가 안 나와요 (너무 좁거나 오타일 수 있어요)",
                             "🎯 키워드 검증 · 쓸까 말까",
                             "이 단어 자체를 직접 검증하거나, 한 단계 넓은 씨앗으로 바꿔보세요",
                         )
 
                     if not sub_two_step:
                         # 전체 자동 분석 + 합격 판정
+                        kws = sub_res["keywords"]
+                        if len(kws) > 40:
+                            st.caption("⏳ 개수가 많아 전체 자동 분석은 시간이 걸려요. 다음엔 ⚡2단계로 골라 분석하면 빨라요.")
                         progress = st.progress(0)
                         status = st.empty()
                         rows = []
-                        kws = sub_res["keywords"]
                         for i, kw in enumerate(kws):
                             status.text(f"분석 중 ({i+1}/{len(kws)}): {kw}")
                             r = analyze_keyword(kw, st.session_state.api_keys)
@@ -1770,6 +1791,7 @@ with tab6:
                                     "_점수": v["points"],
                                     "월간검색": r["monthly_search"],
                                     "경쟁글": r["blog_count"],
+                                    "비율": (round(r["blog_count"] / r["monthly_search"], 1) if r["monthly_search"] else None),
                                     "경쟁강도": r["competition"],
                                     "노출점수": r["exposure_score"],
                                 })
@@ -1798,6 +1820,7 @@ with tab6:
             df_show["월간검색"] = df_show["월간검색"].apply(lambda x: f"{x:,}")
             df_show["경쟁글"] = df_show["경쟁글"].apply(lambda x: f"{x:,}")
             st.dataframe(df_show, hide_index=True, use_container_width=True)
+            st.caption("📊 비율 = 문서수(경쟁글) ÷ 월간검색 — **낮을수록 경쟁 대비 수요가 좋아 노리기 쉬워요**(muhankey '비율'과 같은 개념).")
 
             csv = df.drop(columns=["_점수"]).to_csv(index=False).encode("utf-8-sig")
             st.download_button(
@@ -1826,6 +1849,7 @@ with tab6:
                         rows.append({
                             "키워드": kw, "판정": f"{v['emoji']} {v['grade']}", "_점수": v["points"],
                             "월간검색": r["monthly_search"], "경쟁글": r["blog_count"],
+                            "비율": (round(r["blog_count"] / r["monthly_search"], 1) if r["monthly_search"] else None),
                             "경쟁강도": r["competition"], "노출점수": r["exposure_score"],
                         })
                     progress.progress((i + 1) / max(1, len(picked)))
@@ -1998,4 +2022,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.18 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.19 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
