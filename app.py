@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.22
+키워드 종합 분석기 v6.23
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -23,6 +23,7 @@
 - v6.20: 소재 캘린더 탭 카테고리별 분리 — 기존엔 돈/육아 정책이 한 덩어리로 섞여 나왔음. CAL_CATEGORIES 자료구조(육아·가정·돈·정보 4개)로 각 카테고리마다 월별 시즌 소재 + 상시 소재를 따로 관리. UI는 기준 월 선택 + 카테고리 멀티셀렉트(기본 전체) → 2×2 카드로 카테고리별 분리 표시(각 카드: 이번 달 시즌 2개 + 다음 달 1개 + 상시 2개 + 전체 보기 expander). 기존 돈 시즌/상시 데이터는 '💰 돈' 카테고리로 그대로 이전.
 - v6.21: 세부 글감 파기에 '두딸파파 씨앗 풀' 드롭다운(SEED_POOL 32개 내장) — "뭘 넣지?" 결정 피로 제거. 풀에서 고르면 직접 입력 없이 바로 파기. (직접 입력)이 기본값이라 기존 동작 무변경.
 - v6.22: 📰 '오늘의 소재' 탭 신설 — 정책브리핑(korea.kr) 부처별 보도자료 RSS 수집(표준 라이브러리 XML 파싱, feedparser 의존성 없음) → 신호어 필터(돈·행동·타겟 + 최근성 점수) → 제목에서 후보 키워드 추출 → 상위 N건 검색량·문서수·비율 자동 실측(quick_kw_check). Streamlit Cloud엔 백그라운드가 없어 "버튼 수집" 방식. ⚠ RSS 주소는 배포 후 실테스트로 검증 필요(부처별 성공/실패 화면 표시, RSS_FEEDS 딕셔너리에서 수정).
+- v6.23: 오늘의 소재 수집원 교체 (RSS → 목록 페이지 파싱) — 실테스트에서 dept_*.xml 전부 404. 조사 결과 korea.kr RSS는 서비스 자체가 중단됨(살아있는 policy_*.xml 피드도 내용이 2018년 12월 화석). 보도자료 목록 페이지(briefing/pressReleaseList.do)가 서버렌더링(오늘 날짜 자료가 정적 HTML에 존재)임을 확인 → fetch_press_releases()로 직접 파싱(제목=<strong>, 날짜·부처=span.source, pageIndex 페이지네이션, 페이지당 ~20건). RSS_FEEDS·fetch_rss_items 삭제. 날짜 점수 파싱을 RFC822→"%Y.%m.%d"로. 실제 저장 HTML로 파싱 로직 검증(node 포팅, 20건 추출 확인). 추가 설계 수정 2건: ① 최근성 점수만으로 필터 통과되던 구멍 차단(신호어 최소 1개 필수 — 안 그러면 오늘 자료는 MOU·간담회까지 전부 통과) ② 신호어 통과 0건인 날(흔함)을 위해 기본 수집 5페이지(~100건) + 전체 제목 훑어보기 폴백 expander.
 """
 
 import streamlit as st
@@ -887,20 +888,14 @@ def fetch_category_news(category, keys, per_query=6):
 
 
 # ================================================
-# v6.22: 오늘의 소재 — 정책브리핑(korea.kr) 부처별 보도자료 RSS
+# v6.22~23: 오늘의 소재 — 정책브리핑(korea.kr) 보도자료
 # ================================================
 # 보도자료 시점 = 검색 급증 직전 + 경쟁 글 거의 0인 골든타임.
-# 표준 라이브러리(xml.etree)로 파싱 — feedparser 의존성 없이 그대로 배포 가능.
-# ⚠ RSS 주소는 korea.kr 개편 시 바뀔 수 있음 — 실패하면 탭 화면에 부처별로 표시되니
-#   그때 아래 딕셔너리의 주소만 고치면 된다.
-RSS_FEEDS = {
-    "기획재정부": "https://www.korea.kr/rss/dept_moef.xml",
-    "보건복지부": "https://www.korea.kr/rss/dept_mohw.xml",
-    "국토교통부": "https://www.korea.kr/rss/dept_molit.xml",
-    "교육부":     "https://www.korea.kr/rss/dept_moe.xml",
-    "고용노동부": "https://www.korea.kr/rss/dept_moel.xml",
-    "여성가족부": "https://www.korea.kr/rss/dept_mogef.xml",
-}
+# v6.23: korea.kr RSS는 2018년에 서비스 중단(피드 주소는 살아있지만 내용이 2018년 화석)
+#   → 보도자료 목록 페이지(pressReleaseList.do)가 서버렌더링이라 직접 파싱으로 전환.
+#   구조: <a href="/briefing/pressReleaseView..."> <strong>제목</strong>
+#         ... <span class="source"><span>2026.07.10</span><span>부처명</span>
+# ⚠ korea.kr 개편으로 구조가 바뀌면 아래 fetch_press_releases의 정규식을 수정.
 
 # 제목 신호어 — 이게 없는 보도자료(간담회·행사·인사)는 거른다
 RSS_MONEY  = ["지급", "지원금", "환급", "인상", "감면", "공제", "바우처", "수당", "장려금", "급여", "할인", "무료", "혜택"]
@@ -908,25 +903,46 @@ RSS_ACTION = ["신청", "접수", "시행", "마감", "확대", "개편", "모�
 RSS_TARGET = ["육아", "출산", "아동", "어린이", "다자녀", "자녀", "청년", "주택", "전세", "초등", "유치원", "보육", "부모", "임신", "교육비", "가구"]
 
 
-def fetch_rss_items(name, url, timeout=10):
-    """RSS 2.0 피드에서 (제목·링크·날짜) 추출. 실패 사유는 화면 표시용으로 반환."""
-    import xml.etree.ElementTree as ET
-    try:
-        r = requests.get(url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0"})
-        r.raise_for_status()
-        root = ET.fromstring(r.content)
-        items = []
-        for it in root.iter("item"):
-            title = (it.findtext("title") or "").strip()
-            link = (it.findtext("link") or "").strip()
-            pub = (it.findtext("pubDate") or "").strip()
-            if title:
-                items.append({"부처": name, "title": title, "link": link, "pubDate": pub})
-        if not items:
-            return {"error": "항목 0개 (RSS 구조가 다르거나 비어있음)", "items": []}
-        return {"error": None, "items": items}
-    except Exception as e:
-        return {"error": str(e)[:100], "items": []}
+def fetch_press_releases(pages=3, timeout=12):
+    """정책브리핑 보도자료 목록 크롤링. 페이지당 약 20건, 제목·부처·날짜·링크 추출."""
+    import re as _re
+    import html as _html
+    items, errors = [], []
+    for p in range(1, pages + 1):
+        try:
+            r = requests.get(
+                "https://www.korea.kr/briefing/pressReleaseList.do",
+                params={"pageIndex": p}, timeout=timeout,
+                headers={"User-Agent": "Mozilla/5.0"})
+            r.raise_for_status()
+            page_html = r.text.replace("\n", " ").replace("\r", " ")
+        except Exception as e:
+            errors.append(f"{p}페이지 수집 실패: {str(e)[:80]}")
+            continue
+        blocks = page_html.split('<a href="/briefing/pressReleaseView.do')[1:]
+        for b in blocks:
+            m_href = _re.match(r'([^"]*)"', b)
+            m_title = _re.search(r"<strong>\s*(.*?)\s*</strong>", b)
+            m_src = _re.search(r'class="source">\s*<span>([\d.]+)</span>\s*<span>([^<]+)</span>', b)
+            if not m_title:
+                continue
+            title = _html.unescape(_re.sub(r"<[^>]+>", "", m_title.group(1))).strip()
+            link = ("https://www.korea.kr/briefing/pressReleaseView.do"
+                    + _html.unescape(m_href.group(1))) if m_href else ""
+            items.append({
+                "부처": (m_src.group(2).strip() if m_src else ""),
+                "title": title,
+                "link": link,
+                "pubDate": (m_src.group(1) if m_src else ""),
+            })
+        time.sleep(0.2)
+    # 제목 기준 중복 제거
+    seen, out = set(), []
+    for it in items:
+        if it["title"] and it["title"] not in seen:
+            seen.add(it["title"])
+            out.append(it)
+    return {"items": out, "errors": errors}
 
 
 def score_press_item(title, pub_date_str):
@@ -939,9 +955,8 @@ def score_press_item(title, pub_date_str):
     if any(w in title for w in RSS_TARGET):
         score += 2; hits.append("🎯타겟")
     try:
-        from email.utils import parsedate_to_datetime
-        d = parsedate_to_datetime(pub_date_str)
-        days = (datetime.now(d.tzinfo) - d).days
+        d = datetime.strptime(pub_date_str, "%Y.%m.%d")   # v6.23: 목록 페이지 날짜 형식
+        days = (datetime.now() - d).days
         if days <= 2:
             score += 2
         elif days <= 7:
@@ -1367,7 +1382,7 @@ with tab_home:
 # ============ 탭: 오늘의 소재 (정책 보도자료 RSS → 키워드 발굴) ============
 with tab_rss:
     st.subheader("📰 오늘의 소재 — 부처 보도자료에서 키워드 발굴")
-    st.info("""정책브리핑(korea.kr) 부처별 **보도자료 RSS**를 읽어 돈·행동·타겟 신호어로 거른 뒤,
+    st.info("""정책브리핑(korea.kr) **보도자료 목록(전 부처)**을 읽어 돈·행동·타겟 신호어로 거른 뒤,
 제목에서 뽑은 **후보 키워드의 검색량·문서수·비율까지 자동 조회**합니다.
 보도자료 시점 = 검색 급증 직전 + 경쟁 글 거의 0인 골든타임 · 보도자료 원문 링크는 글 쓸 때 팩트 출처로도 사용
 🟢 후보 키워드는 '🎯 키워드 검증' 탭에서 최종 합격 확인 후 쓰세요.""")
@@ -1375,41 +1390,37 @@ with tab_rss:
     if not st.session_state.api_configured:
         st.warning("👈 네이버 API 키가 없으면 수집·필터까지만 하고, 검색량 실측은 건너뜁니다")
 
-    rss_topn = st.selectbox("검색량까지 실측할 상위 소재 수", [5, 8, 12], index=1, key="rss_topn")
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        # 보도자료 대부분은 행정 잡음이라 신호어에 걸리는 건 소수 — 넉넉히 가져온다
+        rss_pages = st.selectbox("가져올 목록 페이지 수 (페이지당 약 20건)", [3, 5, 10], index=1, key="rss_pages")
+    with col_r2:
+        rss_topn = st.selectbox("검색량까지 실측할 상위 소재 수", [5, 8, 12], index=1, key="rss_topn")
 
     if st.button("📰 보도자료 수집·분석", type="primary", use_container_width=True, key="rss_btn"):
-        all_items, feed_status = [], []
-        prog = st.progress(0)
-        status = st.empty()
-        feeds = list(RSS_FEEDS.items())
-        for i, (name, url) in enumerate(feeds):
-            status.text(f"RSS 수집 중 ({i+1}/{len(feeds)}): {name}")
-            res = fetch_rss_items(name, url)
-            feed_status.append((name, res["error"], len(res["items"])))
-            all_items.extend(res["items"])
-            prog.progress((i + 1) / len(feeds))
-        status.empty(); prog.empty()
-
-        ok_names = [f"{n}({c}건)" for n, e, c in feed_status if not e]
-        if ok_names:
-            st.caption("✅ 수집 성공: " + " · ".join(ok_names))
-        for n, e, _c in feed_status:
-            if e:
-                st.warning(f"⚠ {n} RSS 실패: {e} — korea.kr 개편으로 주소가 바뀌었을 수 있어요 (코드 상단 RSS_FEEDS에서 수정)")
+        with st.spinner(f"정책브리핑 보도자료 수집 중 ({rss_pages}페이지)..."):
+            res = fetch_press_releases(pages=rss_pages)
+        for e in res["errors"]:
+            st.warning(f"⚠ {e}")
+        all_items = res["items"]
 
         if not all_items:
-            st.error("수집된 보도자료가 없습니다 — RSS 주소 확인이 필요합니다")
+            st.error("수집된 보도자료가 없습니다 — korea.kr 페이지 구조가 바뀌었을 수 있어요 (fetch_press_releases 정규식 수정 필요)")
         else:
+            st.caption(f"✅ 보도자료 {len(all_items)}건 수집 (전 부처, 최신순)")
             scored = []
             for it in all_items:
                 s, hits = score_press_item(it["title"], it.get("pubDate", ""))
-                if s >= 2:  # 신호어 없는 행사·인사성 보도자료 컷
+                # 신호어(hits)가 최소 1개는 있어야 통과 — 최근성 점수만으로 통과 금지
+                # (안 그러면 오늘 자료는 MOU·간담회까지 전부 통과해 필터가 무력화됨)
+                if s >= 2 and hits:
                     it2 = dict(it)
                     it2["점수"] = s
                     it2["신호"] = " ".join(hits)
                     it2["후보"] = extract_candidate_keywords(it["title"])
                     scored.append(it2)
             scored.sort(key=lambda x: x["점수"], reverse=True)
+            st.session_state["rss_all"] = all_items   # 0건일 때 훑어보기 폴백용
 
             # 상위 N건은 후보 키워드 실측 (광고 API + 블로그 문서수)
             if st.session_state.api_configured and scored:
@@ -1458,6 +1469,13 @@ with tab_rss:
 
         st.info("🟢 후보를 '🎯 키워드 검증' 탭에 넣어 합격 확인 → blog_ai_writer로. "
                 "후보 추출은 기계라 어색할 수 있어요 — 제목을 보고 직접 다듬는 게 더 정확합니다.")
+    elif st.session_state.get("rss_all"):
+        # 수집은 됐는데 신호어 필터 통과 0건 — 흔한 날 (보도자료 대부분은 행정 잡음)
+        st.info("오늘은 돈·육아 신호어에 걸린 보도자료가 없어요. 아래 전체 제목을 훑어보거나, "
+                "🪓 세부 글감 파기의 씨앗 풀 / 🗓️ 소재캘린더로 진행하세요.")
+        with st.expander(f"수집한 보도자료 전체 제목 훑어보기 ({len(st.session_state['rss_all'])}건)"):
+            for it in st.session_state["rss_all"]:
+                st.markdown(f"- [{it['title']}]({it['link']}) ({it['부처']} · {it.get('pubDate', '')})")
 
 # ============ 탭1: 네이버 단일 ============
 with tab1:
@@ -2407,4 +2425,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.22 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.23 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
