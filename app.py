@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.20
+키워드 종합 분석기 v6.22
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -21,6 +21,8 @@
 - v6.18: '틀린 탭 사용' 자동 안내 추가 — suggest_tab() 통일 배너로, 잘못된 탭에 키워드를 넣으면 더 맞는 탭을 추천. ①키워드 검증: 넓은 키워드(불합격+월검색≥3만)→세부 글감 파기 ②여러 개 검증: 전부 넓은 단어→세부 글감 파기 ③구글 트렌드: 1개만 입력→키워드 검증 ④누가 검색하나: 데이터 없음(검색량 적음)→키워드 검증 ⑤글감 찾기: 연관어≤1(좁은 단어)→세부 글감 파기 ⑥세부 글감 파기: 자동완성 0개→키워드 검증 / 합격 0개→씨앗 구체화 안내. (임계값은 조정 가능)
 - v6.19: 세부 글감 파기 'muhankey 스타일' 강화 — ① 연관어 개수 선택(20/50/100) ② "🔗 공식 연관어로 넓게 뽑기" 옵션(자동완성 대신 검색광고 연관어로 한 번에 많이, collect_sub_keywords(prefer_related=True)) ③ 비율(=문서수÷월간검색) 칼럼 추가(낮을수록 경쟁 대비 수요 좋음). 개수 많으면 ⚡2단계 권장 안내.
 - v6.20: 소재 캘린더 탭 카테고리별 분리 — 기존엔 돈/육아 정책이 한 덩어리로 섞여 나왔음. CAL_CATEGORIES 자료구조(육아·가정·돈·정보 4개)로 각 카테고리마다 월별 시즌 소재 + 상시 소재를 따로 관리. UI는 기준 월 선택 + 카테고리 멀티셀렉트(기본 전체) → 2×2 카드로 카테고리별 분리 표시(각 카드: 이번 달 시즌 2개 + 다음 달 1개 + 상시 2개 + 전체 보기 expander). 기존 돈 시즌/상시 데이터는 '💰 돈' 카테고리로 그대로 이전.
+- v6.21: 세부 글감 파기에 '두딸파파 씨앗 풀' 드롭다운(SEED_POOL 32개 내장) — "뭘 넣지?" 결정 피로 제거. 풀에서 고르면 직접 입력 없이 바로 파기. (직접 입력)이 기본값이라 기존 동작 무변경.
+- v6.22: 📰 '오늘의 소재' 탭 신설 — 정책브리핑(korea.kr) 부처별 보도자료 RSS 수집(표준 라이브러리 XML 파싱, feedparser 의존성 없음) → 신호어 필터(돈·행동·타겟 + 최근성 점수) → 제목에서 후보 키워드 추출 → 상위 N건 검색량·문서수·비율 자동 실측(quick_kw_check). Streamlit Cloud엔 백그라운드가 없어 "버튼 수집" 방식. ⚠ RSS 주소는 배포 후 실테스트로 검증 필요(부처별 성공/실패 화면 표시, RSS_FEEDS 딕셔너리에서 수정).
 """
 
 import streamlit as st
@@ -253,7 +255,8 @@ with st.sidebar:
     
     st.markdown("---")
     st.markdown("""**📋 이럴 때 어느 탭?**
-- 뭐 쓸지 모를 때 → 🏠 홈 / 🔥 글감 찾기
+- 오늘 뭐 쓰지 (시의성) → 📰 오늘의 소재
+- 뭐 쓸지 모를 때 → 🏠 홈 / 🔥 글감 찾기 / 🪓 씨앗 풀
 - 키워드 정했는데 쓸까 고민 → 🎯 키워드 검증
 - 여러 개 한꺼번에 → 📋 여러 개 검증
 - 더 세부 글감으로 쪼개기 → 🪓 세부 글감 파기
@@ -884,6 +887,122 @@ def fetch_category_news(category, keys, per_query=6):
 
 
 # ================================================
+# v6.22: 오늘의 소재 — 정책브리핑(korea.kr) 부처별 보도자료 RSS
+# ================================================
+# 보도자료 시점 = 검색 급증 직전 + 경쟁 글 거의 0인 골든타임.
+# 표준 라이브러리(xml.etree)로 파싱 — feedparser 의존성 없이 그대로 배포 가능.
+# ⚠ RSS 주소는 korea.kr 개편 시 바뀔 수 있음 — 실패하면 탭 화면에 부처별로 표시되니
+#   그때 아래 딕셔너리의 주소만 고치면 된다.
+RSS_FEEDS = {
+    "기획재정부": "https://www.korea.kr/rss/dept_moef.xml",
+    "보건복지부": "https://www.korea.kr/rss/dept_mohw.xml",
+    "국토교통부": "https://www.korea.kr/rss/dept_molit.xml",
+    "교육부":     "https://www.korea.kr/rss/dept_moe.xml",
+    "고용노동부": "https://www.korea.kr/rss/dept_moel.xml",
+    "여성가족부": "https://www.korea.kr/rss/dept_mogef.xml",
+}
+
+# 제목 신호어 — 이게 없는 보도자료(간담회·행사·인사)는 거른다
+RSS_MONEY  = ["지급", "지원금", "환급", "인상", "감면", "공제", "바우처", "수당", "장려금", "급여", "할인", "무료", "혜택"]
+RSS_ACTION = ["신청", "접수", "시행", "마감", "확대", "개편", "모집", "도입", "완화", "연장", "시작"]
+RSS_TARGET = ["육아", "출산", "아동", "어린이", "다자녀", "자녀", "청년", "주택", "전세", "초등", "유치원", "보육", "부모", "임신", "교육비", "가구"]
+
+
+def fetch_rss_items(name, url, timeout=10):
+    """RSS 2.0 피드에서 (제목·링크·날짜) 추출. 실패 사유는 화면 표시용으로 반환."""
+    import xml.etree.ElementTree as ET
+    try:
+        r = requests.get(url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0"})
+        r.raise_for_status()
+        root = ET.fromstring(r.content)
+        items = []
+        for it in root.iter("item"):
+            title = (it.findtext("title") or "").strip()
+            link = (it.findtext("link") or "").strip()
+            pub = (it.findtext("pubDate") or "").strip()
+            if title:
+                items.append({"부처": name, "title": title, "link": link, "pubDate": pub})
+        if not items:
+            return {"error": "항목 0개 (RSS 구조가 다르거나 비어있음)", "items": []}
+        return {"error": None, "items": items}
+    except Exception as e:
+        return {"error": str(e)[:100], "items": []}
+
+
+def score_press_item(title, pub_date_str):
+    """보도자료 제목 점수화: 돈 +2 / 행동 +1 / 타겟 +2 / 최근성(2일 내 +2, 7일 내 +1)."""
+    score, hits = 0, []
+    if any(w in title for w in RSS_MONEY):
+        score += 2; hits.append("💰돈")
+    if any(w in title for w in RSS_ACTION):
+        score += 1; hits.append("⚡행동")
+    if any(w in title for w in RSS_TARGET):
+        score += 2; hits.append("🎯타겟")
+    try:
+        from email.utils import parsedate_to_datetime
+        d = parsedate_to_datetime(pub_date_str)
+        days = (datetime.now(d.tzinfo) - d).days
+        if days <= 2:
+            score += 2
+        elif days <= 7:
+            score += 1
+    except Exception:
+        pass
+    return score, hits
+
+
+_RSS_TITLE_NOISE = ["보도자료", "브리핑", "발표", "방안", "계획", "추진", "관련", "개최", "실시", "안내", "위한", "대한", "및"]
+
+def extract_candidate_keywords(title):
+    """제목에서 검색해볼 후보 키워드 1~2개.
+    기계 추출엔 한계가 있어 어디까지나 '후보' — 최종 선택·검증은 사람이 검증 탭에서."""
+    import re as _re
+    t = _re.sub(r"[\[\](){}<>‘’“”'\"·,…~]", " ", title)
+    words = [w for w in t.split() if len(w) >= 2]
+
+    def _strip_j(w):
+        for j in ["으로", "에서", "까지", "부터", "에게", "의", "을", "를", "이", "가", "은", "는", "에", "와", "과", "도", "로"]:
+            if len(w) > 2 and w.endswith(j):
+                return w[: -len(j)]
+        return w
+
+    words = [_strip_j(w) for w in words]
+    words = [w for w in words if len(w) >= 2 and w not in _RSS_TITLE_NOISE]
+    if not words:
+        return []
+    # 타겟·돈 신호어가 든 단어를 앞으로 (검색어가 될 확률이 높은 명사)
+    sig = [w for w in words if any(s in w for s in RSS_TARGET + RSS_MONEY)]
+    base = sig + [w for w in words if w not in sig]
+    cands = []
+    if len(base) >= 2:
+        cands.append(base[0] + " " + base[1])
+    cands.append(base[0])
+    return cands[:2]
+
+
+def quick_kw_check(kw, keys):
+    """후보 키워드 가벼운 실측: 월간검색(광고 API 1콜) + 블로그 문서수(검색 API 1콜) + 비율."""
+    out = {"키워드": kw, "월간검색": None, "경쟁": "", "문서수": None, "비율": None}
+    rel = get_related_keywords_list(kw, keys, limit=1)
+    if not rel.get("error") and rel["keywords"]:
+        out["월간검색"] = rel["keywords"][0]["월간검색"]
+        out["경쟁"] = rel["keywords"][0]["경쟁"]
+    try:
+        rr = requests.get(
+            "https://openapi.naver.com/v1/search/blog.json",
+            headers={"X-Naver-Client-Id": keys["client_id"],
+                     "X-Naver-Client-Secret": keys["client_secret"]},
+            params={"query": kw, "display": 1}, timeout=10)
+        rr.raise_for_status()
+        out["문서수"] = rr.json().get("total", 0)
+    except Exception:
+        pass
+    if out["월간검색"] and out["문서수"] is not None:
+        out["비율"] = round(out["문서수"] / out["월간검색"], 1)
+    return out
+
+
+# ================================================
 # 세부 키워드(롱테일) 수집 - 네이버 자동완성
 # ================================================
 # 검색창 자동완성에서 "씨앗 + 뒤에 붙는 말"을 수집한다.
@@ -1172,8 +1291,8 @@ def suggest_tab(reason, target_tab, action=""):
     st.warning(msg)
 
 
-tab_home, tab5, tab6, tab1, tab2, tab3, tab4, tab_cal, tab_ai = st.tabs([
-    "🏠 홈 · 뭐 쓸지 둘러보기", "🔥 글감 찾기 · 뭐가 뜨나", "🪓 세부 글감 파기",
+tab_home, tab_rss, tab5, tab6, tab1, tab2, tab3, tab4, tab_cal, tab_ai = st.tabs([
+    "🏠 홈 · 뭐 쓸지 둘러보기", "📰 오늘의 소재 · 보도자료", "🔥 글감 찾기 · 뭐가 뜨나", "🪓 세부 글감 파기",
     "🎯 키워드 검증 · 쓸까 말까", "📋 여러 개 한번에 검증",
     "📈 구글 트렌드 비교", "📊 누가 검색하나 (연령·성별)",
     "🗓️ 소재캘린더 · 이번 주 뭐 쓰지",
@@ -1244,6 +1363,101 @@ with tab_home:
                     with cols[ci]:
                         with st.container(border=True):
                             render_news_card(cat)
+
+# ============ 탭: 오늘의 소재 (정책 보도자료 RSS → 키워드 발굴) ============
+with tab_rss:
+    st.subheader("📰 오늘의 소재 — 부처 보도자료에서 키워드 발굴")
+    st.info("""정책브리핑(korea.kr) 부처별 **보도자료 RSS**를 읽어 돈·행동·타겟 신호어로 거른 뒤,
+제목에서 뽑은 **후보 키워드의 검색량·문서수·비율까지 자동 조회**합니다.
+보도자료 시점 = 검색 급증 직전 + 경쟁 글 거의 0인 골든타임 · 보도자료 원문 링크는 글 쓸 때 팩트 출처로도 사용
+🟢 후보 키워드는 '🎯 키워드 검증' 탭에서 최종 합격 확인 후 쓰세요.""")
+
+    if not st.session_state.api_configured:
+        st.warning("👈 네이버 API 키가 없으면 수집·필터까지만 하고, 검색량 실측은 건너뜁니다")
+
+    rss_topn = st.selectbox("검색량까지 실측할 상위 소재 수", [5, 8, 12], index=1, key="rss_topn")
+
+    if st.button("📰 보도자료 수집·분석", type="primary", use_container_width=True, key="rss_btn"):
+        all_items, feed_status = [], []
+        prog = st.progress(0)
+        status = st.empty()
+        feeds = list(RSS_FEEDS.items())
+        for i, (name, url) in enumerate(feeds):
+            status.text(f"RSS 수집 중 ({i+1}/{len(feeds)}): {name}")
+            res = fetch_rss_items(name, url)
+            feed_status.append((name, res["error"], len(res["items"])))
+            all_items.extend(res["items"])
+            prog.progress((i + 1) / len(feeds))
+        status.empty(); prog.empty()
+
+        ok_names = [f"{n}({c}건)" for n, e, c in feed_status if not e]
+        if ok_names:
+            st.caption("✅ 수집 성공: " + " · ".join(ok_names))
+        for n, e, _c in feed_status:
+            if e:
+                st.warning(f"⚠ {n} RSS 실패: {e} — korea.kr 개편으로 주소가 바뀌었을 수 있어요 (코드 상단 RSS_FEEDS에서 수정)")
+
+        if not all_items:
+            st.error("수집된 보도자료가 없습니다 — RSS 주소 확인이 필요합니다")
+        else:
+            scored = []
+            for it in all_items:
+                s, hits = score_press_item(it["title"], it.get("pubDate", ""))
+                if s >= 2:  # 신호어 없는 행사·인사성 보도자료 컷
+                    it2 = dict(it)
+                    it2["점수"] = s
+                    it2["신호"] = " ".join(hits)
+                    it2["후보"] = extract_candidate_keywords(it["title"])
+                    scored.append(it2)
+            scored.sort(key=lambda x: x["점수"], reverse=True)
+
+            # 상위 N건은 후보 키워드 실측 (광고 API + 블로그 문서수)
+            if st.session_state.api_configured and scored:
+                top = scored[:rss_topn]
+                prog2 = st.progress(0)
+                st2 = st.empty()
+                for i, it in enumerate(top):
+                    st2.text(f"후보 키워드 실측 중 ({i+1}/{len(top)}): {it['후보'][0] if it['후보'] else '-'}")
+                    checks = []
+                    for c in it["후보"]:
+                        checks.append(quick_kw_check(c, st.session_state.api_keys))
+                        time.sleep(0.15)
+                    it["실측"] = checks
+                    prog2.progress((i + 1) / len(top))
+                st2.empty(); prog2.empty()
+
+            st.session_state["rss_scored"] = scored
+            st.caption(f"신호어 필터 통과 {len(scored)}건 / 전체 수집 {len(all_items)}건")
+
+    # 결과 표시 (세션 유지 — 버튼 다시 안 눌러도 남아있음)
+    _rss_scored = st.session_state.get("rss_scored", [])
+    if _rss_scored:
+        _show_n = st.session_state.get("rss_topn", 8)
+        st.markdown(f"### 🏆 오늘의 소재 상위 {min(_show_n, len(_rss_scored))}건")
+        for it in _rss_scored[:_show_n]:
+            with st.container(border=True):
+                st.markdown(f"**[{it['title']}]({it['link']})**")
+                st.caption(f"{it['부처']} · {it.get('pubDate', '')[:16]} · 점수 {it['점수']} · {it['신호']}")
+                if it.get("실측"):
+                    for c in it["실측"]:
+                        vol, doc, ratio = c["월간검색"], c["문서수"], c["비율"]
+                        good = (vol or 0) >= 500 and (doc or 0) < 30000 and c["경쟁"] != "높음"
+                        emoji = "🟢" if good else "⚪"
+                        vol_s = f"{vol:,}" if isinstance(vol, int) else "?"
+                        doc_s = f"{doc:,}" if isinstance(doc, int) else "?"
+                        ratio_s = ratio if ratio is not None else "—"
+                        st.write(f"{emoji} **{c['키워드']}** — 월 {vol_s}회 · 문서 {doc_s}개 · 비율 {ratio_s} · 경쟁 {c['경쟁'] or '—'}")
+                elif it.get("후보"):
+                    st.write("후보 키워드: " + ", ".join(it["후보"]))
+
+        if len(_rss_scored) > _show_n:
+            with st.expander(f"필터 통과 나머지 {len(_rss_scored) - _show_n}건 보기"):
+                for it in _rss_scored[_show_n:]:
+                    cand = (" → 후보: " + ", ".join(it["후보"])) if it.get("후보") else ""
+                    st.markdown(f"- [{it['title']}]({it['link']}) ({it['부처']} · 점수 {it['점수']}){cand}")
+
+        st.info("🟢 후보를 '🎯 키워드 검증' 탭에 넣어 합격 확인 → blog_ai_writer로. "
+                "후보 추출은 기계라 어색할 수 있어요 — 제목을 보고 직접 다듬는 게 더 정확합니다.")
 
 # ============ 탭1: 네이버 단일 ============
 with tab1:
@@ -1719,6 +1933,23 @@ with tab5:
                         st.caption("💡 '뜨는 키워드'를 '🎯 키워드 검증' 탭에서 자세히 분석하면 블로그 주제로 딱!")
 
 # ============ 탭6: 세부 키워드 발굴 ============
+# v6.21: 두딸파파 씨앗 풀 — "뭘 넣지?" 결정 피로 제거용 내장 씨앗.
+# 위에서부터 순서대로 돌려 쓰면 됨(고민 금지). 소진되면 🤖 AI 키워드 탭에서 리필.
+SEED_POOL = [
+    "(직접 입력)",
+    # ── 정책·수당 ──
+    "아동수당", "부모급여", "자녀장려금", "근로장려금", "첫만남이용권", "국민행복카드",
+    "양육수당", "교육급여", "아이돌봄서비스", "육아휴직급여", "배우자 출산휴가",
+    # ── 다자녀 ──
+    "다자녀 혜택", "다자녀 국가장학금", "다자녀 자동차 감면", "다자녀 전기요금", "다자녀 KTX",
+    # ── 교육·학교 ──
+    "초등 입학준비금", "늘봄학교", "방과후학교", "초등 돌봄교실", "유아학비", "교육비 세액공제",
+    # ── 가정 돈 ──
+    "연말정산 자녀공제", "자녀 세액공제", "어린이 통장", "미성년 자녀 증여", "자녀 청약통장", "어린이 실비보험",
+    # ── 생활 ──
+    "지역화폐", "어린이 독감 예방접종", "아이 병원비 지원", "초등 준비물",
+]
+
 with tab6:
     if not st.session_state.api_configured:
         st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
@@ -1727,11 +1958,22 @@ with tab6:
         각각 합격 판정까지 해줍니다. 넓은 키워드는 입구로만 쓰고, 합격한 세부 키워드로 글을 쓰세요.  
 　🟢 네이버 데이터 (자동완성 + 검색광고 API)""")
 
+        # v6.21: 씨앗 풀 — 고르면 아래 직접 입력 없이 바로 사용
+        seed_pick = st.selectbox(
+            "🌱 두딸파파 씨앗 풀 (고르면 타이핑 없이 바로 파기 — 위에서부터 순서대로 돌려 쓰세요)",
+            SEED_POOL, index=0, key="seed_pick",
+            help="'뭘 넣지' 고민 제거용 내장 씨앗 32개. 직접 입력하려면 (직접 입력) 그대로 두세요.",
+        )
+
         col_s1, col_s2 = st.columns([3, 1])
         with col_s1:
             sub_seed = st.text_input("넓은 키워드 (씨앗)", placeholder="예: 갤럭시S26", key="sub_seed")
         with col_s2:
             sub_stage = st.selectbox("블로그 상태", list(VERDICT_RULES.keys()), key="sub_stage")
+
+        if seed_pick != "(직접 입력)":
+            sub_seed = seed_pick
+            st.caption(f"🌱 씨앗 풀에서 선택됨: **{seed_pick}** (직접 입력값은 무시)")
 
         col_o1, col_o2 = st.columns([1, 2])
         with col_o1:
@@ -2165,4 +2407,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.20 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.22 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
