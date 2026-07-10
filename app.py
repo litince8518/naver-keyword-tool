@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.23
+키워드 종합 분석기 v6.24
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -24,6 +24,7 @@
 - v6.21: 세부 글감 파기에 '두딸파파 씨앗 풀' 드롭다운(SEED_POOL 32개 내장) — "뭘 넣지?" 결정 피로 제거. 풀에서 고르면 직접 입력 없이 바로 파기. (직접 입력)이 기본값이라 기존 동작 무변경.
 - v6.22: 📰 '오늘의 소재' 탭 신설 — 정책브리핑(korea.kr) 부처별 보도자료 RSS 수집(표준 라이브러리 XML 파싱, feedparser 의존성 없음) → 신호어 필터(돈·행동·타겟 + 최근성 점수) → 제목에서 후보 키워드 추출 → 상위 N건 검색량·문서수·비율 자동 실측(quick_kw_check). Streamlit Cloud엔 백그라운드가 없어 "버튼 수집" 방식. ⚠ RSS 주소는 배포 후 실테스트로 검증 필요(부처별 성공/실패 화면 표시, RSS_FEEDS 딕셔너리에서 수정).
 - v6.23: 오늘의 소재 수집원 교체 (RSS → 목록 페이지 파싱) — 실테스트에서 dept_*.xml 전부 404. 조사 결과 korea.kr RSS는 서비스 자체가 중단됨(살아있는 policy_*.xml 피드도 내용이 2018년 12월 화석). 보도자료 목록 페이지(briefing/pressReleaseList.do)가 서버렌더링(오늘 날짜 자료가 정적 HTML에 존재)임을 확인 → fetch_press_releases()로 직접 파싱(제목=<strong>, 날짜·부처=span.source, pageIndex 페이지네이션, 페이지당 ~20건). RSS_FEEDS·fetch_rss_items 삭제. 날짜 점수 파싱을 RFC822→"%Y.%m.%d"로. 실제 저장 HTML로 파싱 로직 검증(node 포팅, 20건 추출 확인). 추가 설계 수정 2건: ① 최근성 점수만으로 필터 통과되던 구멍 차단(신호어 최소 1개 필수 — 안 그러면 오늘 자료는 MOU·간담회까지 전부 통과) ② 신호어 통과 0건인 날(흔함)을 위해 기본 수집 5페이지(~100건) + 전체 제목 훑어보기 폴백 expander.
+- v6.24: 오늘의 소재 실운영 튜닝 — 첫 라이브 실행 결과("청년 700명 파견"류 행정 홍보가 상위 점령) 반영. ① 필터를 "돈 또는 행동 신호 필수"로 강화(타겟 단어는 가점만 — 청년·자녀만으로는 통과 불가) ② 후보 키워드 잡음어 보강(보도·참고·점검·운영·모든·목소리 등) + 서술형(다로 끝남: 알린다·시작한다) 제외.
 """
 
 import streamlit as st
@@ -966,7 +967,9 @@ def score_press_item(title, pub_date_str):
     return score, hits
 
 
-_RSS_TITLE_NOISE = ["보도자료", "브리핑", "발표", "방안", "계획", "추진", "관련", "개최", "실시", "안내", "위한", "대한", "및"]
+_RSS_TITLE_NOISE = ["보도자료", "브리핑", "발표", "방안", "계획", "추진", "관련", "개최", "실시", "안내", "위한", "대한", "및",
+                    # v6.24: 실운영에서 후보 키워드를 어색하게 만들던 잡음어 보강
+                    "보도", "참고", "점검", "운영", "본격", "함께", "모든", "목소리", "재능", "세계", "현장", "정부", "국민"]
 
 def extract_candidate_keywords(title):
     """제목에서 검색해볼 후보 키워드 1~2개.
@@ -982,7 +985,8 @@ def extract_candidate_keywords(title):
         return w
 
     words = [_strip_j(w) for w in words]
-    words = [w for w in words if len(w) >= 2 and w not in _RSS_TITLE_NOISE]
+    # v6.24: '알린다·시작한다' 같은 서술형(다로 끝남)은 검색어가 못 됨 → 제외
+    words = [w for w in words if len(w) >= 2 and w not in _RSS_TITLE_NOISE and not w.endswith("다")]
     if not words:
         return []
     # 타겟·돈 신호어가 든 단어를 앞으로 (검색어가 될 확률이 높은 명사)
@@ -1411,9 +1415,10 @@ with tab_rss:
             scored = []
             for it in all_items:
                 s, hits = score_press_item(it["title"], it.get("pubDate", ""))
-                # 신호어(hits)가 최소 1개는 있어야 통과 — 최근성 점수만으로 통과 금지
-                # (안 그러면 오늘 자료는 MOU·간담회까지 전부 통과해 필터가 무력화됨)
-                if s >= 2 and hits:
+                # v6.24: 돈 또는 행동 신호가 있어야 통과 — 타겟(청년·자녀 등)만으로는 부족.
+                # ("청년 700명 파견"·"청년의 목소리" 같은 행정 홍보가 타겟+최근성만으로
+                #  상위를 점령하던 문제. 타겟은 가점 역할만.)
+                if s >= 2 and any(h in ("💰돈", "⚡행동") for h in hits):
                     it2 = dict(it)
                     it2["점수"] = s
                     it2["신호"] = " ".join(hits)
@@ -2425,4 +2430,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.23 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.24 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
