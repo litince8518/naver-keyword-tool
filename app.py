@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.25
+키워드 종합 분석기 v6.26
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -26,6 +26,7 @@
 - v6.23: 오늘의 소재 수집원 교체 (RSS → 목록 페이지 파싱) — 실테스트에서 dept_*.xml 전부 404. 조사 결과 korea.kr RSS는 서비스 자체가 중단됨(살아있는 policy_*.xml 피드도 내용이 2018년 12월 화석). 보도자료 목록 페이지(briefing/pressReleaseList.do)가 서버렌더링(오늘 날짜 자료가 정적 HTML에 존재)임을 확인 → fetch_press_releases()로 직접 파싱(제목=<strong>, 날짜·부처=span.source, pageIndex 페이지네이션, 페이지당 ~20건). RSS_FEEDS·fetch_rss_items 삭제. 날짜 점수 파싱을 RFC822→"%Y.%m.%d"로. 실제 저장 HTML로 파싱 로직 검증(node 포팅, 20건 추출 확인). 추가 설계 수정 2건: ① 최근성 점수만으로 필터 통과되던 구멍 차단(신호어 최소 1개 필수 — 안 그러면 오늘 자료는 MOU·간담회까지 전부 통과) ② 신호어 통과 0건인 날(흔함)을 위해 기본 수집 5페이지(~100건) + 전체 제목 훑어보기 폴백 expander.
 - v6.24: 오늘의 소재 실운영 튜닝 — 첫 라이브 실행 결과("청년 700명 파견"류 행정 홍보가 상위 점령) 반영. ① 필터를 "돈 또는 행동 신호 필수"로 강화(타겟 단어는 가점만 — 청년·자녀만으로는 통과 불가) ② 후보 키워드 잡음어 보강(보도·참고·점검·운영·모든·목소리 등) + 서술형(다로 끝남: 알린다·시작한다) 제외.
 - v6.25: 씨앗 풀 정체성 확장 — SEED_POOL을 '자녀 중심 32개' → '가정·자녀 경제 55개'로 확장(2026-07-10 확정 라인업 반영, 네이버 초유딩파파 = 가족 앵글 있는 돈). 신규 카테고리: 출산·양육 신제도(신생아 특례대출·6+6 부모육아휴직제 등) / 연말정산·세금(인적공제·의료비·월세·신용카드·산후조리원) / 청약·주거(주택드림·특별공급·전세자금·디딤돌) / 청년·신혼 지원(청년도약계좌·청년월세) / 건강보험·의료(피부양자·환급·본인부담상한제·영유아 건강검진) / 연금·목돈(국민연금·연금저축·노란우산·IRP). ★ 투자·투기(주식·부동산·코인·펀드·ETF) 전면 제외 — 세액공제·제도·절약 앵글만. 코드 변경은 SEED_POOL 리스트·selectbox help·주석뿐(로직 무변경).
+- v6.26: blog_ai_writer '보내기' 시드 개선 2건. ① 카테고리 드롭다운 기본값을 IT(CAT-A, 맨 앞)→ 'CAT-C·정보·생활정보'(힌트 없는 안전 카테고리)로. 기존엔 안 바꾸면 cat_hint_for가 "스마트폰 갤럭시 아이폰 노트북 IT" 신호어를 시드에 몰래 주입 → 최저시급 등 비IT 키워드가 blog_ai_writer에서 CAT-A로 오분류(이번 실사례). IT 힌트는 CAT-A 직접 선택 시만 나오게(IT 서브블로그용 유지). ② build_seed_text: 실제 연관어(sub_keywords) 없을 때 키워드를 가짜로 반복하던 걸 제거 — 연관어 있을 때만 "함께 많이 찾는 키워드로는 ~" 문장 삽입(없으면 생략). ⚠ 로컬 파이썬 없어 정적 검토만 — 배포 후 실테스트 필요.
 """
 
 import streamlit as st
@@ -526,11 +527,15 @@ def build_seed_text(result, cat_hint="", sub_keywords=None):
         rel = result.get("related_keywords", []) or []
         words = [r.get("키워드", "") for r in rel if r.get("키워드")]
     rel_words = words[:10]
-    rel_str = ", ".join(rel_words) if rel_words else kw
+    # v6.26: 실제 연관어가 있을 때만 그 문장을 넣는다 (없으면 키워드만 반복돼 잡음 + 검색의도 신호 0)
+    rel_part = (
+        f"{kw} 관련해서 함께 많이 찾는 키워드로는 {', '.join(rel_words)} 등이 있습니다. "
+        if rel_words else ""
+    )
     cat_part = f"{cat_hint} 분야의 {kw} 정보입니다. " if cat_hint else ""
     seed = (
         f"{kw}에 대해 검색하는 사람들이 많습니다. "
-        f"{kw} 관련해서 함께 많이 찾는 키워드로는 {rel_str} 등이 있습니다. "
+        f"{rel_part}"
         f"이 글에서는 {kw}의 핵심 내용과 궁금한 점을 짚어봅니다. "
         f"{cat_part}"
         f"{kw} 정보를 찾는 분께 도움이 됩니다."
@@ -1496,10 +1501,16 @@ with tab1:
         _saved_stage = st.query_params.get("stage", "")
         _bc1, _bc2 = st.columns([3, 2])
         with _bc1:
+            # v6.26: 기본값을 IT(CAT-A, 맨 앞)에서 힌트 없는 안전 카테고리로 변경.
+            #   기존엔 드롭다운을 안 바꾸면 cat_hint_for가 IT 신호어를 시드에 몰래 주입 →
+            #   최저시급 등 비IT 키워드가 blog_ai_writer에서 CAT-A로 오분류됨.
+            #   IT 힌트는 CAT-A를 직접 고를 때만 나오게(IT 서브블로그용은 유지).
+            _default_cat = "CAT-C · 정보·생활정보·꿀팁"
+            _def_idx = _cats.index(_default_cat) if _default_cat in _cats else 0
             cat_pick = st.selectbox(
                 "① 카테고리",
                 _cats,
-                index=(_cats.index(_saved_cat) if _saved_cat in _cats else 0),
+                index=(_cats.index(_saved_cat) if _saved_cat in _cats else _def_idx),
                 key="unified_cat",
             )
         with _bc2:
@@ -2449,4 +2460,4 @@ with tab_ai:
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.25 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.26 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
