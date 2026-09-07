@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.29
+키워드 종합 분석기 v6.31
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -27,6 +27,8 @@
 - v6.24: 오늘의 소재 실운영 튜닝 — 첫 라이브 실행 결과("청년 700명 파견"류 행정 홍보가 상위 점령) 반영. ① 필터를 "돈 또는 행동 신호 필수"로 강화(타겟 단어는 가점만 — 청년·자녀만으로는 통과 불가) ② 후보 키워드 잡음어 보강(보도·참고·점검·운영·모든·목소리 등) + 서술형(다로 끝남: 알린다·시작한다) 제외.
 - v6.25: 씨앗 풀 정체성 확장 — SEED_POOL을 '자녀 중심 32개' → '가정·자녀 경제 55개'로 확장(2026-07-10 확정 라인업 반영, 네이버 초유딩파파 = 가족 앵글 있는 돈). 신규 카테고리: 출산·양육 신제도(신생아 특례대출·6+6 부모육아휴직제 등) / 연말정산·세금(인적공제·의료비·월세·신용카드·산후조리원) / 청약·주거(주택드림·특별공급·전세자금·디딤돌) / 청년·신혼 지원(청년도약계좌·청년월세) / 건강보험·의료(피부양자·환급·본인부담상한제·영유아 건강검진) / 연금·목돈(국민연금·연금저축·노란우산·IRP). ★ 투자·투기(주식·부동산·코인·펀드·ETF) 전면 제외 — 세액공제·제도·절약 앵글만. 코드 변경은 SEED_POOL 리스트·selectbox help·주석뿐(로직 무변경).
 - v6.26: blog_ai_writer '보내기' 시드 개선 2건. ① 카테고리 드롭다운 기본값을 IT(CAT-A, 맨 앞)→ 'CAT-C·정보·생활정보'(힌트 없는 안전 카테고리)로. 기존엔 안 바꾸면 cat_hint_for가 "스마트폰 갤럭시 아이폰 노트북 IT" 신호어를 시드에 몰래 주입 → 최저시급 등 비IT 키워드가 blog_ai_writer에서 CAT-A로 오분류(이번 실사례). IT 힌트는 CAT-A 직접 선택 시만 나오게(IT 서브블로그용 유지). ② build_seed_text: 실제 연관어(sub_keywords) 없을 때 키워드를 가짜로 반복하던 걸 제거 — 연관어 있을 때만 "함께 많이 찾는 키워드로는 ~" 문장 삽입(없으면 생략). ⚠ 로컬 파이썬 없어 정적 검토만 — 배포 후 실테스트 필요.
+- v6.31: 사이드바 전문가형 리디자인 — ① 상단 브랜드 블록(로고+이름) 추가 ② 라디오 메뉴를 CSS로 '세로 내비 메뉴'화(hover 강조 + 선택 항목 accent 배경, radiogroup label 스타일링·:has(input:checked)) ③ '⚙️ API 설정'을 사이드바 **하단으로 이동·고정**(stSidebarUserContent flexbox + .push-bottom margin-top:auto) — 흩어져 있던 네이버/Gemini 2개 expander를 하나로 통합, 상태 배지 순화 ④ '어떤 걸 골라야 하나요?' 도움말을 접이식 expander로 정리 ⑤ 메인 헤더/여백·상태 배지 CSS 정돈(accent 팔레트 도입). ⚠ 로직 무변경(UI/CSS만) · :has 미지원 옛 브라우저에선 선택강조·하단고정이 순서상 하단 배치로 폴백. 로컬 파이썬 없어 정적 검토만 — 배포 후 실제 렌더 확인 필요.
+- v6.30: 세부 글감 파기 '연관어 범위' 선택 시인성·설명 개선 — 기존 '🔗 공식 연관어로 넓게 뽑기' 체크박스가 옆칸에 작게 끼어 있고 용어(자동완성/검색광고 API)가 초보에게 어려웠음. → **'어떤 연관어를 찾을까요?' 라디오 2택**으로 승격(실예시: 구강검진 → 구강검진 비용 vs 찾아가는 AI구강검진). captions로 각 선택 결과 한 줄 설명. 값은 기존 prefer_related(sub_wide)로 그대로 연결 — 로직 무변경, UI/문구만. 상단 안내의 '자동완성+검색광고 API' 표현도 '네이버 실제 검색 데이터'로 순화. 기본값은 여전히 '뒤에 붙는 말만'(빠름).
 - v6.29: 메뉴 UI 개편 — 상단 가로 탭(st.tabs)을 **왼쪽 사이드바 세로 메뉴(st.radio, SELECTED_MENU)**로 이전. 8개 화면 라벨은 기존 탭과 동일 문자열 유지, 각 `with tabX:` 블록을 `if SELECTED_MENU == "라벨":` 가드로 치환(선택된 화면만 렌더 → 매 rerun마다 8탭 전부 그리던 부담도 감소). 사이드바 최상단에 '🧭 메뉴' 배치 → 그 아래 기존 'API 설정'. 라디오 key로 새로고침에도 선택 유지. ⚠ 로컬 파이썬 없어 정적 검토만 — 배포 후 실행 확인 필요.
 - v6.28: 탭 정리 — ① 삭제: '🗓️ 소재캘린더'·'📊 누가 검색하나(연령·성별 데이터랩)' 탭 2개(뉴스/이슈 발굴 계열 과다·저활용, IT 검색 롱테일엔 불필요). tab_cal 전용 죽은 데이터 CAL_CATEGORIES(155줄)도 제거. ② 나머지 8탭 '용도별' 재정렬 — [실전]세부글감파기·키워드검증·여러개검증 → [발굴]홈·글감찾기·오늘의소재·AI키워드 → [참고]구글트렌드. st.tabs 언팩 8=8·with블록 8개·잔여참조0 정적검증. ⚠ 로컬 파이썬 없어 정적 검토만 — 배포 후 실행 확인 필요.
 - v6.27: 세부 글감/키워드 검증 '판정' 기준 교정(judge_keyword). [문제] 판정이 화면의 '비율(문서수÷검색량)'을 무시하고 '경쟁강도(=검색광고 광고주 경쟁)'를 organic 랭킹 난이도처럼 감점 → 비율 좋은 키워드가 보통, 나쁜 키워드가 합격으로 뒤집혀 보였다(실사례: '아이폰 배터리 성능' 비율 15.4인데 합격 vs '절약' 비율 2.7인데 보통). [교정] ① 비율을 판정 핵심 축으로 반영(<3 +2 / <10 +1 / ≥10 −2) ② 문서수 과다 페널티 강화(≥doc_ok −3) ③ 광고 경쟁강도는 점수에서 제외(상업성 지표라 랭킹과 무관, 안내만). judge_keyword 한 곳 수정으로 '세부 글감 파기'·'키워드 검증' 두 탭 동시 반영. ⚠ 로컬 파이썬 없어 정적 검토만 — 배포 후 실테스트.
@@ -48,10 +50,55 @@ st.set_page_config(page_title="키워드 종합 분석기", page_icon="🔍", la
 
 st.markdown("""
 <style>
-    .main-header { font-size: 2.2rem; font-weight: 700; margin-bottom: 0.3rem; }
-    .subtitle { color: #6b7280; margin-bottom: 2rem; }
-    .api-status-ok { background: #d1fae5; color: #065f46; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; }
-    .api-status-no { background: #fee2e2; color: #991b1b; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; }
+    :root{
+        --accent:#4f46e5; --accent-2:#6366f1; --accent-strong:#4338ca;
+        --accent-soft:#eef2ff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb;
+    }
+    /* ---------- 메인 영역 ---------- */
+    .block-container{ padding-top:2.2rem; }
+    .main-header{ font-size:2rem; font-weight:800; letter-spacing:-.02em; color:var(--ink);
+        margin:0 0 .15rem; display:flex; align-items:center; gap:.5rem; }
+    .subtitle{ color:var(--muted); margin-bottom:1.6rem; font-size:.98rem; }
+
+    /* ---------- 사이드바 뼈대 ---------- */
+    section[data-testid="stSidebar"]{ background:#fbfbfd; border-right:1px solid var(--line); }
+    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"]{
+        display:flex; flex-direction:column; min-height:calc(100vh - 3.5rem); padding-top:.4rem; }
+    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] > div:first-child{
+        display:flex; flex-direction:column; flex:1 1 auto; }
+    /* '설정' 묶음을 하단으로 밀어내는 스페이서 (:has 미지원 브라우저면 그냥 순서상 하단) */
+    [data-testid="stElementContainer"]:has(.push-bottom),
+    [data-testid="element-container"]:has(.push-bottom){ margin-top:auto; }
+    .push-bottom{ height:1px; }
+
+    /* ---------- 브랜드 / 섹션 라벨 ---------- */
+    .brand{ display:flex; align-items:center; gap:.55rem; padding:.35rem .2rem 1rem;
+        font-weight:800; font-size:1.15rem; color:var(--ink); }
+    .brand .logo{ width:34px; height:34px; border-radius:9px; flex:0 0 auto;
+        background:linear-gradient(135deg,var(--accent),var(--accent-2));
+        display:flex; align-items:center; justify-content:center; color:#fff; font-size:1.05rem; }
+    .side-label{ font-size:.72rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+        color:var(--muted); margin:.4rem .2rem .5rem; }
+
+    /* ---------- 라디오 → 세로 내비 메뉴 ---------- */
+    section[data-testid="stSidebar"] div[role="radiogroup"]{ gap:.25rem; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label{
+        width:100%; margin:0; padding:.55rem .7rem; border-radius:10px; border:1px solid transparent;
+        cursor:pointer; transition:background .12s,color .12s; color:#374151; font-weight:600; font-size:.94rem; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover{
+        background:var(--accent-soft); color:var(--accent-strong); }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child{ display:none; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked){
+        background:var(--accent); box-shadow:0 1px 3px rgba(79,70,229,.35); }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) *{ color:#fff !important; }
+
+    /* ---------- 상태 배지 ---------- */
+    .api-status-ok{ background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;
+        padding:.4rem .7rem; border-radius:8px; font-weight:600; font-size:.85rem; }
+    .api-status-no{ background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;
+        padding:.4rem .7rem; border-radius:8px; font-weight:600; font-size:.85rem; }
+
+    section[data-testid="stSidebar"] .stButton>button{ border-radius:8px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -182,7 +229,14 @@ def clear_ai_keys_localstorage():
 # 사이드바
 # ================================================
 with st.sidebar:
-    st.header("🧭 메뉴")
+    # ---- 브랜드 ----
+    st.markdown(
+        '<div class="brand"><span class="logo">🔍</span><span>키워드 분석기</span></div>',
+        unsafe_allow_html=True,
+    )
+
+    # ---- 내비게이션 메뉴 ----
+    st.markdown('<div class="side-label">메뉴</div>', unsafe_allow_html=True)
     MENU_ITEMS = [
         "🪓 세부 글감 파기", "🎯 키워드 검증 · 쓸까 말까", "📋 여러 개 한번에 검증",
         "🏠 홈 · 뭐 쓸지 둘러보기", "🔥 글감 찾기 · 뭐가 뜨나", "📰 오늘의 소재 · 보도자료",
@@ -191,43 +245,53 @@ with st.sidebar:
     SELECTED_MENU = st.radio(
         "이동할 화면", MENU_ITEMS, key="nav_menu", label_visibility="collapsed"
     )
-    st.markdown("---")
-    st.header("⚙️ API 설정")
+
+    with st.expander("❓ 어떤 걸 골라야 하나요?", expanded=False):
+        st.markdown("""- **오늘 뭐 쓰지?** (시의성) → 📰 오늘의 소재
+- **뭐 쓸지 모를 때** → 🏠 홈 · 🔥 글감 찾기
+- **키워드는 정했는데 고민** → 🎯 키워드 검증
+- **여러 개 한꺼번에** → 📋 여러 개 검증
+- **큰 키워드를 쪼개기** → 🪓 세부 글감 파기""")
+
+    # ---- 아래 '설정'을 사이드바 하단으로 고정 ----
+    st.markdown('<div class="push-bottom"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="side-label">설정</div>', unsafe_allow_html=True)
 
     if st.session_state.api_configured:
-        st.markdown('<div class="api-status-ok">✅ 네이버 API 로드 완료</div>', unsafe_allow_html=True)
-        st.caption("브라우저에 저장됨")
-        st.write("")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            if st.button("✏️ 수정", use_container_width=True):
-                st.session_state.api_configured = False
-                st.rerun()
-        with col_b:
-            if st.button("🗑️ 삭제", use_container_width=True):
-                st.session_state.api_configured = False
-                st.session_state.api_keys = {}
-                clear_localstorage()
-                st.success("삭제됨")
-                time.sleep(1)
-                st.rerun()
+        st.markdown('<div class="api-status-ok">✅ 네이버 API 연결됨</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="api-status-no">⚠️ 네이버 API 키 입력 필요</div>', unsafe_allow_html=True)
-        st.caption("구글 탭은 키 없이도 사용 가능")
-    
-    st.markdown("---")
-    
-    with st.expander("🔑 네이버 API 키 입력", expanded=not st.session_state.api_configured):
-        st.caption("**검색/데이터랩 API** (developers.naver.com)")
+        st.markdown('<div class="api-status-no">⚠️ API 키 입력 필요</div>', unsafe_allow_html=True)
+
+    with st.expander("⚙️ API 설정", expanded=not st.session_state.api_configured):
+        if st.session_state.api_configured:
+            st.caption("브라우저에 저장돼 있어요")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("✏️ 수정", use_container_width=True):
+                    st.session_state.api_configured = False
+                    st.rerun()
+            with col_b:
+                if st.button("🗑️ 삭제", use_container_width=True):
+                    st.session_state.api_configured = False
+                    st.session_state.api_keys = {}
+                    clear_localstorage()
+                    st.success("삭제됨")
+                    time.sleep(1)
+                    st.rerun()
+            st.markdown("---")
+        else:
+            st.caption("네이버 키를 넣으면 모든 기능이 열려요 (구글 탭은 키 없이 가능)")
+
+        st.caption("**네이버 검색 / 데이터랩** · developers.naver.com")
         client_id = st.text_input("Client ID", value=st.session_state.api_keys.get("client_id", ""), type="password")
         client_secret = st.text_input("Client Secret", value=st.session_state.api_keys.get("client_secret", ""), type="password")
-        
-        st.caption("**검색광고 API** (searchad.naver.com)")
+
+        st.caption("**네이버 검색광고** · searchad.naver.com")
         ad_api_key = st.text_input("Access License", value=st.session_state.api_keys.get("ad_api_key", ""), type="password")
         ad_secret_key = st.text_input("Secret Key", value=st.session_state.api_keys.get("ad_secret_key", ""), type="password")
         ad_customer_id = st.text_input("Customer ID", value=st.session_state.api_keys.get("ad_customer_id", ""))
-        
-        if st.button("💾 저장 (브라우저에 보관)", type="primary", use_container_width=True):
+
+        if st.button("💾 네이버 키 저장", type="primary", use_container_width=True):
             if all([client_id, client_secret, ad_api_key, ad_secret_key, ad_customer_id]):
                 keys_dict = {
                     "client_id": client_id, "client_secret": client_secret,
@@ -242,11 +306,10 @@ with st.sidebar:
                 st.rerun()
             else:
                 st.error("⚠️ 5개 키 모두 입력하세요")
-    
-    with st.expander("🤖 Gemini API 키 (선택) — 키워드 자동수집용", expanded=False):
-        st.caption("**Gemini** (aistudio.google.com) — 무료 발급")
+
+        st.markdown("---")
+        st.caption("**Gemini (선택)** · aistudio.google.com — 무료 · AI 키워드 자동수집용")
         gemini_key = st.text_input("Gemini API Key", value=st.session_state.ai_keys.get("gemini_api_key", ""), type="password", key="gemini_key_input")
-        
         c_ai1, c_ai2 = st.columns(2)
         with c_ai1:
             if st.button("💾 저장", use_container_width=True, key="save_ai_keys"):
@@ -266,18 +329,8 @@ with st.sidebar:
                 st.success("삭제됨")
                 time.sleep(1)
                 st.rerun()
-        
         if st.session_state.ai_keys.get("gemini_api_key"):
             st.caption("Gemini ✅")
-    
-    st.markdown("---")
-    st.markdown("""**📋 이럴 때 어느 탭?**
-- 오늘 뭐 쓰지 (시의성) → 📰 오늘의 소재
-- 뭐 쓸지 모를 때 → 🏠 홈 / 🔥 글감 찾기 / 🪓 씨앗 풀
-- 키워드 정했는데 쓸까 고민 → 🎯 키워드 검증
-- 여러 개 한꺼번에 → 📋 여러 개 검증
-- 더 세부 글감으로 쪼개기 → 🪓 세부 글감 파기
-- 부가: 📈 구글 비교 / 📊 누가 검색하나""")
 
 
 # ================================================
@@ -1942,7 +1995,7 @@ if SELECTED_MENU == "🪓 세부 글감 파기":
     else:
         st.info("""🪓 **큰 키워드를 글감으로 쪼갤 때** — 넓은 키워드(예: 갤럭시S26)를 넣으면, **그 뒤에 붙는 세부 키워드**(사전예약·출시일·케이스 등)를 찾아  
         각각 합격 판정까지 해줍니다. 넓은 키워드는 입구로만 쓰고, 합격한 세부 키워드로 글을 쓰세요.  
-　🟢 네이버 데이터 (자동완성 + 검색광고 API)""")
+　🟢 네이버 실제 검색 데이터로 찾아요""")
 
         # v6.21: 씨앗 풀 — 고르면 아래 직접 입력 없이 바로 사용
         seed_pick = st.selectbox(
@@ -1961,18 +2014,25 @@ if SELECTED_MENU == "🪓 세부 글감 파기":
             sub_seed = seed_pick
             st.caption(f"🌱 씨앗 풀에서 선택됨: **{seed_pick}** (직접 입력값은 무시)")
 
-        col_o1, col_o2 = st.columns([1, 2])
-        with col_o1:
-            sub_limit = st.selectbox(
-                "연관어 개수", [20, 50, 100], index=0, key="sub_limit",
-                help="많이 뽑을수록 후보는 늘지만 분석은 느려져요. 50·100개는 ⚡2단계 모드를 권장해요.",
-            )
-        with col_o2:
-            sub_wide = st.checkbox(
-                "🔗 공식 연관어로 넓게 뽑기 (자동완성 대신 — 한 번에 많이)",
-                value=False, key="sub_wide",
-                help="체크: 검색광고 연관어로 더 많은 키워드 수집(넓은 분야 적합). 해제: 자동완성 롱테일(구체 세부어 적합).",
-            )
+        # v6.30: 처음 보는 사람도 바로 고르게 — '어떤 걸 찾을지'를 예시로 크게 보여줌
+        st.markdown("#### 어떤 연관어를 찾을까요?")
+        SCOPE_NARROW = "🔹 내 키워드 뒤에 붙는 말만  (예: 구강검진 → 구강검진 비용 · 구강검진 시기)"
+        SCOPE_WIDE   = "🔸 내 키워드가 중간·뒤에 든 것도  (예: 구강검진 → 찾아가는 AI구강검진 같은 것까지)"
+        sub_scope = st.radio(
+            "어떤 연관어를 찾을까요?",
+            [SCOPE_NARROW, SCOPE_WIDE],
+            index=0, key="sub_scope", label_visibility="collapsed",
+            captions=[
+                "빠르고, 내 키워드로 시작하는 세부 글감 찾기에 좋아요.",
+                "조금 느리지만, 내 키워드가 앞·중간에 숨은 키워드까지 넓게 찾아줘요.",
+            ],
+        )
+        sub_wide = (sub_scope == SCOPE_WIDE)   # 기존 prefer_related 값으로 연결
+
+        sub_limit = st.selectbox(
+            "몇 개까지 찾을까요?", [20, 50, 100], index=0, key="sub_limit",
+            help="많이 찾을수록 후보는 늘지만 분석이 느려져요. 50·100개는 아래 '⚡ 2단계'와 함께 쓰길 권해요.",
+        )
         sub_two_step = st.checkbox(
             "⚡ 2단계로 빠르게 (먼저 수집만 → 고른 것만 정밀 분석)",
             value=False, key="sub_two_step",
@@ -2175,4 +2235,4 @@ if SELECTED_MENU == "🤖 AI 키워드 (모델별)":
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.29 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.31 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
