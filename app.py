@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.32
+키워드 종합 분석기 v6.33
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -27,6 +27,7 @@
 - v6.24: 오늘의 소재 실운영 튜닝 — 첫 라이브 실행 결과("청년 700명 파견"류 행정 홍보가 상위 점령) 반영. ① 필터를 "돈 또는 행동 신호 필수"로 강화(타겟 단어는 가점만 — 청년·자녀만으로는 통과 불가) ② 후보 키워드 잡음어 보강(보도·참고·점검·운영·모든·목소리 등) + 서술형(다로 끝남: 알린다·시작한다) 제외.
 - v6.25: 씨앗 풀 정체성 확장 — SEED_POOL을 '자녀 중심 32개' → '가정·자녀 경제 55개'로 확장(2026-07-10 확정 라인업 반영, 네이버 초유딩파파 = 가족 앵글 있는 돈). 신규 카테고리: 출산·양육 신제도(신생아 특례대출·6+6 부모육아휴직제 등) / 연말정산·세금(인적공제·의료비·월세·신용카드·산후조리원) / 청약·주거(주택드림·특별공급·전세자금·디딤돌) / 청년·신혼 지원(청년도약계좌·청년월세) / 건강보험·의료(피부양자·환급·본인부담상한제·영유아 건강검진) / 연금·목돈(국민연금·연금저축·노란우산·IRP). ★ 투자·투기(주식·부동산·코인·펀드·ETF) 전면 제외 — 세액공제·제도·절약 앵글만. 코드 변경은 SEED_POOL 리스트·selectbox help·주석뿐(로직 무변경).
 - v6.26: blog_ai_writer '보내기' 시드 개선 2건. ① 카테고리 드롭다운 기본값을 IT(CAT-A, 맨 앞)→ 'CAT-C·정보·생활정보'(힌트 없는 안전 카테고리)로. 기존엔 안 바꾸면 cat_hint_for가 "스마트폰 갤럭시 아이폰 노트북 IT" 신호어를 시드에 몰래 주입 → 최저시급 등 비IT 키워드가 blog_ai_writer에서 CAT-A로 오분류(이번 실사례). IT 힌트는 CAT-A 직접 선택 시만 나오게(IT 서브블로그용 유지). ② build_seed_text: 실제 연관어(sub_keywords) 없을 때 키워드를 가짜로 반복하던 걸 제거 — 연관어 있을 때만 "함께 많이 찾는 키워드로는 ~" 문장 삽입(없으면 생략). ⚠ 로컬 파이썬 없어 정적 검토만 — 배포 후 실테스트 필요.
+- v6.33: '한 번에 보기' 추천 연관어 폴백 수정 — [버그] '아이폰18' 등 신제품·미래 키워드는 검색광고 keywordstool에 데이터가 아직 없어 빈 결과 → "연관 키워드 없음"으로 뜸(사장님 실사용 발견). [원인] 키가 있으면 keywordstool만 쓰고, 그게 비면 폴백이 없었음(자동완성엔 아이폰18프로·출시일·사전예약·가격 등 잘 나오는데도). [수정] keywordstool이 error거나 빈 결과면 **자동완성으로 폴백**(씨앗과 동일한 항목은 제외) → 신제품도 연관어가 나옴. 자동완성 폴백 시 검색량은 없지만 각 줄 '이걸로 검색'으로 정밀 판정 가능(안내 캡션 추가). ⚠ 로컬 파이썬 없어 py_compile만 · 자동완성 엔드포인트 실측으로 아이폰18 10개 확인.
 - v6.32: '🔍 한 번에 보기' 통합 기본 화면 신설 (거북이버프 황금키워드 흐름 벤치마킹) — 키워드 하나 넣고 엔터 → ①판정 카드(추천/보통/비추천 + 월간검색 PC·모바일 분리 + 문서수·비율·노출점수 + 상위노출 틈새 한 줄 + '그래서 뭘 하면 되나' 실행 조언 + 근거 expander) → [🔗 추천 연관 키워드](연관어+빠른판정+'이걸로 검색'으로 파고들기) → [📰 뉴스·정보 수집]을 한 화면에서. 8개 탭 오가지 않아도 됨. 사이드바 메뉴 맨 위=기본 화면. **하이브리드 키(get_active_keys)**: 서버 Secrets[naver] 있으면 방문자 키 없이 공개형, 없으면 방문자 입력 — 혼자 쓸 때/공개할 때 코드 동일(상용화 문 열어둠). **키 없어도** 연관어(자동완성)·뉴스(구글뉴스 RSS, fetch_news_titles_free)는 작동. 재사용: analyze_keyword·judge_keyword·get_related_keywords_list·search_news. 시장조사 근거: 성별·연령·구글트렌드는 블로거 저효용(무료도구도 없음)이라 기존 탭에 유지(통합 화면 미포함). ⚠ 로컬 파이썬 없어 py_compile만 — 배포 후 실행 확인 필요.
 - v6.31: 사이드바 전문가형 리디자인 — ① 상단 브랜드 블록(로고+이름) 추가 ② 라디오 메뉴를 CSS로 '세로 내비 메뉴'화(hover 강조 + 선택 항목 accent 배경, radiogroup label 스타일링·:has(input:checked)) ③ '⚙️ API 설정'을 사이드바 **하단으로 이동·고정**(stSidebarUserContent flexbox + .push-bottom margin-top:auto) — 흩어져 있던 네이버/Gemini 2개 expander를 하나로 통합, 상태 배지 순화 ④ '어떤 걸 골라야 하나요?' 도움말을 접이식 expander로 정리 ⑤ 메인 헤더/여백·상태 배지 CSS 정돈(accent 팔레트 도입). ⚠ 로직 무변경(UI/CSS만) · :has 미지원 옛 브라우저에선 선택강조·하단고정이 순서상 하단 배치로 폴백. 로컬 파이썬 없어 정적 검토만 — 배포 후 실제 렌더 확인 필요.
 - v6.30: 세부 글감 파기 '연관어 범위' 선택 시인성·설명 개선 — 기존 '🔗 공식 연관어로 넓게 뽑기' 체크박스가 옆칸에 작게 끼어 있고 용어(자동완성/검색광고 API)가 초보에게 어려웠음. → **'어떤 연관어를 찾을까요?' 라디오 2택**으로 승격(실예시: 구강검진 → 구강검진 비용 vs 찾아가는 AI구강검진). captions로 각 선택 결과 한 줄 설명. 값은 기존 prefer_related(sub_wide)로 그대로 연결 — 로직 무변경, UI/문구만. 상단 안내의 '자동완성+검색광고 API' 표현도 '네이버 실제 검색 데이터'로 순화. 기본값은 여전히 '뒤에 붙는 말만'(빠름).
@@ -1563,20 +1564,26 @@ if SELECTED_MENU == "🔍 한 번에 보기":
                 st.markdown(f"#### 🔗 추천 연관 키워드 &nbsp;<span style='color:#9ca3af;font-size:.85rem;'>— {kw}</span>", unsafe_allow_html=True)
                 if "one_related" not in st.session_state:
                     with st.spinner("연관 키워드 수집 중..."):
-                        if keys:
-                            st.session_state["one_related"] = get_related_keywords_list(kw, keys, limit=10)
-                        else:
+                        # ① 키 있으면 검색광고 연관어(검색량 포함) 우선
+                        rel = get_related_keywords_list(kw, keys, limit=10) if keys else {"error": "no-key", "keywords": []}
+                        # ② 키 없거나 · keywordstool이 못 찾으면(신제품·미래·롱테일 키워드) 자동완성으로 폴백
+                        #    (예: '아이폰18'은 검색광고 데이터가 아직 없어 빈 결과 → 자동완성엔 프로·출시일·가격 등 잘 나옴)
+                        if rel.get("error") or not rel.get("keywords"):
                             ac = get_autocomplete_keywords(kw)
-                            st.session_state["one_related"] = {
-                                "error": ac.get("error"),
-                                "keywords": [{"키워드": k, "월간검색": None, "경쟁": ""} for k in ac.get("keywords", [])[:10]],
-                            }
+                            seed_norm = kw.replace(" ", "")
+                            ac_kws = [k for k in ac.get("keywords", []) if k.replace(" ", "") != seed_norm]
+                            if ac_kws:
+                                rel = {"error": None, "source": "자동완성",
+                                       "keywords": [{"키워드": k, "월간검색": None, "경쟁": ""} for k in ac_kws[:10]]}
+                        st.session_state["one_related"] = rel
                 rel = st.session_state["one_related"]
-                if rel.get("error"):
-                    st.warning(rel["error"])
+                if rel.get("error") and not rel.get("keywords"):
+                    st.warning("연관 키워드를 찾지 못했어요. 키워드를 조금 바꿔서(띄어쓰기·다른 표현) 다시 검색해보세요.")
                 elif not rel.get("keywords"):
                     st.caption("연관 키워드가 없어요.")
                 else:
+                    if rel.get("source") == "자동완성":
+                        st.caption("ℹ️ 이 키워드는 검색광고 데이터가 아직 적어 **자동완성 연관어**를 보여줘요. 검색량·판정은 각 줄 '이걸로 검색'을 누르면 나옵니다.")
                     hc = st.columns([4, 2, 2, 2])
                     hc[0].caption("키워드"); hc[1].caption("빠른 판정"); hc[2].caption("월간검색"); hc[3].caption("")
                     for i, item in enumerate(rel["keywords"]):
@@ -2456,4 +2463,4 @@ if SELECTED_MENU == "🤖 AI 키워드 (모델별)":
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.32 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.33 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
