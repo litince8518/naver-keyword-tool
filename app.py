@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.34
+키워드 종합 분석기 v6.35
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -27,6 +27,7 @@
 - v6.24: 오늘의 소재 실운영 튜닝 — 첫 라이브 실행 결과("청년 700명 파견"류 행정 홍보가 상위 점령) 반영. ① 필터를 "돈 또는 행동 신호 필수"로 강화(타겟 단어는 가점만 — 청년·자녀만으로는 통과 불가) ② 후보 키워드 잡음어 보강(보도·참고·점검·운영·모든·목소리 등) + 서술형(다로 끝남: 알린다·시작한다) 제외.
 - v6.25: 씨앗 풀 정체성 확장 — SEED_POOL을 '자녀 중심 32개' → '가정·자녀 경제 55개'로 확장(2026-07-10 확정 라인업 반영, 네이버 초유딩파파 = 가족 앵글 있는 돈). 신규 카테고리: 출산·양육 신제도(신생아 특례대출·6+6 부모육아휴직제 등) / 연말정산·세금(인적공제·의료비·월세·신용카드·산후조리원) / 청약·주거(주택드림·특별공급·전세자금·디딤돌) / 청년·신혼 지원(청년도약계좌·청년월세) / 건강보험·의료(피부양자·환급·본인부담상한제·영유아 건강검진) / 연금·목돈(국민연금·연금저축·노란우산·IRP). ★ 투자·투기(주식·부동산·코인·펀드·ETF) 전면 제외 — 세액공제·제도·절약 앵글만. 코드 변경은 SEED_POOL 리스트·selectbox help·주석뿐(로직 무변경).
 - v6.26: blog_ai_writer '보내기' 시드 개선 2건. ① 카테고리 드롭다운 기본값을 IT(CAT-A, 맨 앞)→ 'CAT-C·정보·생활정보'(힌트 없는 안전 카테고리)로. 기존엔 안 바꾸면 cat_hint_for가 "스마트폰 갤럭시 아이폰 노트북 IT" 신호어를 시드에 몰래 주입 → 최저시급 등 비IT 키워드가 blog_ai_writer에서 CAT-A로 오분류(이번 실사례). IT 힌트는 CAT-A 직접 선택 시만 나오게(IT 서브블로그용 유지). ② build_seed_text: 실제 연관어(sub_keywords) 없을 때 키워드를 가짜로 반복하던 걸 제거 — 연관어 있을 때만 "함께 많이 찾는 키워드로는 ~" 문장 삽입(없으면 생략). ⚠ 로컬 파이썬 없어 정적 검토만 — 배포 후 실테스트 필요.
+- v6.35: '한 번에 보기' 파고들기(drill-down) 매끄럽게 — 사장님 "두 번 파고들면 더 좋은 키워드 나오지 않나?". [기존] 연관어에서 [이걸로 검색] 누르면 판정만 뜨고 연관어는 다시 눌러야 해서 깊이 파려면 클릭이 많았음. [수정] ① 검색·파고들면 **연관어가 자동으로 함께 펼쳐짐**(one_show_related=True) → 넓은키워드→세부→더세부를 한 클릭씩. ② 버튼 라벨 '이걸로 검색'→**'이걸로 파기'**. ③ **파고들기 경로 브레드크럼**(🧭 아이폰 › 아이폰17 › 아이폰17 사전예약 · N단계째) 추가로 깊이 인지. one_path 세션상태로 관리(검색 시 리셋·파기 시 append). ⚠ py_compile만.
 - v6.34: '한 번에 보기' 추천 연관어 관련도 필터 적용 — [문제] '아이폰' 검색 시 검색광고 keywordstool이 씨앗을 포함하지 않는 광고연관어(갤럭시·중고폰·요금제 등)까지 줘서 상관없는 게 많이 섞임(사장님 발견). [수정] 이미 있던 `filter_related_keywords(strict=True)`(씨앗 포함어만·위치무관·관련도순)를 통합 화면 연관어에도 적용 + 씨앗 자기 자신 제외 + 넉넉히(limit 10→40) 받아 걸러 상위 12개. 자동완성 폴백은 어차피 씨앗 포함이라 그대로 통과. [효과] 아이폰케이스·아이폰17 등 관련어만 남고 갤럭시·중고폰 제거. ⚠ py_compile만(로컬 streamlit 없음).
 - v6.33: '한 번에 보기' 추천 연관어 폴백 수정 — [버그] '아이폰18' 등 신제품·미래 키워드는 검색광고 keywordstool에 데이터가 아직 없어 빈 결과 → "연관 키워드 없음"으로 뜸(사장님 실사용 발견). [원인] 키가 있으면 keywordstool만 쓰고, 그게 비면 폴백이 없었음(자동완성엔 아이폰18프로·출시일·사전예약·가격 등 잘 나오는데도). [수정] keywordstool이 error거나 빈 결과면 **자동완성으로 폴백**(씨앗과 동일한 항목은 제외) → 신제품도 연관어가 나옴. 자동완성 폴백 시 검색량은 없지만 각 줄 '이걸로 검색'으로 정밀 판정 가능(안내 캡션 추가). ⚠ 로컬 파이썬 없어 py_compile만 · 자동완성 엔드포인트 실측으로 아이폰18 10개 확인.
 - v6.32: '🔍 한 번에 보기' 통합 기본 화면 신설 (거북이버프 황금키워드 흐름 벤치마킹) — 키워드 하나 넣고 엔터 → ①판정 카드(추천/보통/비추천 + 월간검색 PC·모바일 분리 + 문서수·비율·노출점수 + 상위노출 틈새 한 줄 + '그래서 뭘 하면 되나' 실행 조언 + 근거 expander) → [🔗 추천 연관 키워드](연관어+빠른판정+'이걸로 검색'으로 파고들기) → [📰 뉴스·정보 수집]을 한 화면에서. 8개 탭 오가지 않아도 됨. 사이드바 메뉴 맨 위=기본 화면. **하이브리드 키(get_active_keys)**: 서버 Secrets[naver] 있으면 방문자 키 없이 공개형, 없으면 방문자 입력 — 혼자 쓸 때/공개할 때 코드 동일(상용화 문 열어둠). **키 없어도** 연관어(자동완성)·뉴스(구글뉴스 RSS, fetch_news_titles_free)는 작동. 재사용: analyze_keyword·judge_keyword·get_related_keywords_list·search_news. 시장조사 근거: 성별·연령·구글트렌드는 블로거 저효용(무료도구도 없음)이라 기존 탭에 유지(통합 화면 미포함). ⚠ 로컬 파이썬 없어 py_compile만 — 배포 후 실행 확인 필요.
@@ -1489,7 +1490,8 @@ if SELECTED_MENU == "🔍 한 번에 보기":
     if go and in_kw.strip():
         st.session_state["one_kw"] = in_kw.strip()
         st.session_state["one_stage_val"] = in_stage
-        st.session_state["one_show_related"] = False
+        st.session_state["one_path"] = [in_kw.strip()]   # 파고들기 경로 시작
+        st.session_state["one_show_related"] = True        # 검색 즉시 연관어도 함께 펼침(버프식)
         st.session_state["one_show_news"] = False
         st.session_state.pop("one_related", None)
         st.session_state.pop("one_news", None)
@@ -1503,6 +1505,11 @@ if SELECTED_MENU == "🔍 한 번에 보기":
     if kw:
         res = st.session_state.get("one_result")
         stage = st.session_state.get("one_stage_val", "신규")
+
+        # 파고들기 경로(브레드크럼) — 몇 단계 좁혔는지 보이게
+        path = st.session_state.get("one_path", [kw])
+        if len(path) > 1:
+            st.caption("🧭 " + "  ›  ".join(path) + f"  ({len(path)}단계째 파고드는 중)")
 
         if keys is None:
             st.info("🔑 정밀 판정(검색량·경쟁)은 네이버 API 키가 있어야 나와요. 아래 **추천 연관어·뉴스는 키 없이도** 됩니다. (사이드바 하단 ⚙️ API 설정)")
@@ -1601,15 +1608,16 @@ if SELECTED_MENU == "🔍 한 번에 보기":
                         rc[0].markdown(f"**{kwn}**")
                         rc[1].markdown(f"{emo} {lab}" if lab else "·")
                         rc[2].write(f"{item['월간검색']:,}" if item.get("월간검색") else "—")
-                        if rc[3].button("이걸로 검색", key=f"one_rel_{i}"):
+                        if rc[3].button("이걸로 파기", key=f"one_rel_{i}"):
                             st.session_state["one_kw"] = kwn
-                            st.session_state["one_show_related"] = False
+                            st.session_state["one_path"] = st.session_state.get("one_path", [kw]) + [kwn]  # 경로 한 단계 추가
+                            st.session_state["one_show_related"] = True   # 파고들면 그 키워드 연관어도 바로 펼침 → 한 클릭으로 더 깊이
                             st.session_state["one_show_news"] = False
                             st.session_state.pop("one_related", None)
                             st.session_state.pop("one_news", None)
                             st.session_state["one_result"] = analyze_keyword(kwn, keys) if keys else None
                             st.rerun()
-                    st.caption("각 줄의 **이걸로 검색**을 누르면 위 판정이 그 키워드로 바뀝니다. (빠른 판정은 검색량 기준 · 정밀 판정은 클릭)")
+                    st.caption("각 줄 **이걸로 파기**를 누르면 그 키워드로 판정 + 연관어가 다시 펼쳐져요. 한 번 더 파고들수록 경쟁 약한 알짜가 잘 나옵니다.")
 
         # ── ③ 정보 수집 (뉴스) ──
         if st.session_state.get("one_show_news"):
@@ -2471,4 +2479,4 @@ if SELECTED_MENU == "🤖 AI 키워드 (모델별)":
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.34 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.35 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
