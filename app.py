@@ -1,5 +1,5 @@
 """
-키워드 종합 분석기 v6.31
+키워드 종합 분석기 v6.32
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
 
@@ -27,6 +27,7 @@
 - v6.24: 오늘의 소재 실운영 튜닝 — 첫 라이브 실행 결과("청년 700명 파견"류 행정 홍보가 상위 점령) 반영. ① 필터를 "돈 또는 행동 신호 필수"로 강화(타겟 단어는 가점만 — 청년·자녀만으로는 통과 불가) ② 후보 키워드 잡음어 보강(보도·참고·점검·운영·모든·목소리 등) + 서술형(다로 끝남: 알린다·시작한다) 제외.
 - v6.25: 씨앗 풀 정체성 확장 — SEED_POOL을 '자녀 중심 32개' → '가정·자녀 경제 55개'로 확장(2026-07-10 확정 라인업 반영, 네이버 초유딩파파 = 가족 앵글 있는 돈). 신규 카테고리: 출산·양육 신제도(신생아 특례대출·6+6 부모육아휴직제 등) / 연말정산·세금(인적공제·의료비·월세·신용카드·산후조리원) / 청약·주거(주택드림·특별공급·전세자금·디딤돌) / 청년·신혼 지원(청년도약계좌·청년월세) / 건강보험·의료(피부양자·환급·본인부담상한제·영유아 건강검진) / 연금·목돈(국민연금·연금저축·노란우산·IRP). ★ 투자·투기(주식·부동산·코인·펀드·ETF) 전면 제외 — 세액공제·제도·절약 앵글만. 코드 변경은 SEED_POOL 리스트·selectbox help·주석뿐(로직 무변경).
 - v6.26: blog_ai_writer '보내기' 시드 개선 2건. ① 카테고리 드롭다운 기본값을 IT(CAT-A, 맨 앞)→ 'CAT-C·정보·생활정보'(힌트 없는 안전 카테고리)로. 기존엔 안 바꾸면 cat_hint_for가 "스마트폰 갤럭시 아이폰 노트북 IT" 신호어를 시드에 몰래 주입 → 최저시급 등 비IT 키워드가 blog_ai_writer에서 CAT-A로 오분류(이번 실사례). IT 힌트는 CAT-A 직접 선택 시만 나오게(IT 서브블로그용 유지). ② build_seed_text: 실제 연관어(sub_keywords) 없을 때 키워드를 가짜로 반복하던 걸 제거 — 연관어 있을 때만 "함께 많이 찾는 키워드로는 ~" 문장 삽입(없으면 생략). ⚠ 로컬 파이썬 없어 정적 검토만 — 배포 후 실테스트 필요.
+- v6.32: '🔍 한 번에 보기' 통합 기본 화면 신설 (거북이버프 황금키워드 흐름 벤치마킹) — 키워드 하나 넣고 엔터 → ①판정 카드(추천/보통/비추천 + 월간검색 PC·모바일 분리 + 문서수·비율·노출점수 + 상위노출 틈새 한 줄 + '그래서 뭘 하면 되나' 실행 조언 + 근거 expander) → [🔗 추천 연관 키워드](연관어+빠른판정+'이걸로 검색'으로 파고들기) → [📰 뉴스·정보 수집]을 한 화면에서. 8개 탭 오가지 않아도 됨. 사이드바 메뉴 맨 위=기본 화면. **하이브리드 키(get_active_keys)**: 서버 Secrets[naver] 있으면 방문자 키 없이 공개형, 없으면 방문자 입력 — 혼자 쓸 때/공개할 때 코드 동일(상용화 문 열어둠). **키 없어도** 연관어(자동완성)·뉴스(구글뉴스 RSS, fetch_news_titles_free)는 작동. 재사용: analyze_keyword·judge_keyword·get_related_keywords_list·search_news. 시장조사 근거: 성별·연령·구글트렌드는 블로거 저효용(무료도구도 없음)이라 기존 탭에 유지(통합 화면 미포함). ⚠ 로컬 파이썬 없어 py_compile만 — 배포 후 실행 확인 필요.
 - v6.31: 사이드바 전문가형 리디자인 — ① 상단 브랜드 블록(로고+이름) 추가 ② 라디오 메뉴를 CSS로 '세로 내비 메뉴'화(hover 강조 + 선택 항목 accent 배경, radiogroup label 스타일링·:has(input:checked)) ③ '⚙️ API 설정'을 사이드바 **하단으로 이동·고정**(stSidebarUserContent flexbox + .push-bottom margin-top:auto) — 흩어져 있던 네이버/Gemini 2개 expander를 하나로 통합, 상태 배지 순화 ④ '어떤 걸 골라야 하나요?' 도움말을 접이식 expander로 정리 ⑤ 메인 헤더/여백·상태 배지 CSS 정돈(accent 팔레트 도입). ⚠ 로직 무변경(UI/CSS만) · :has 미지원 옛 브라우저에선 선택강조·하단고정이 순서상 하단 배치로 폴백. 로컬 파이썬 없어 정적 검토만 — 배포 후 실제 렌더 확인 필요.
 - v6.30: 세부 글감 파기 '연관어 범위' 선택 시인성·설명 개선 — 기존 '🔗 공식 연관어로 넓게 뽑기' 체크박스가 옆칸에 작게 끼어 있고 용어(자동완성/검색광고 API)가 초보에게 어려웠음. → **'어떤 연관어를 찾을까요?' 라디오 2택**으로 승격(실예시: 구강검진 → 구강검진 비용 vs 찾아가는 AI구강검진). captions로 각 선택 결과 한 줄 설명. 값은 기존 prefer_related(sub_wide)로 그대로 연결 — 로직 무변경, UI/문구만. 상단 안내의 '자동완성+검색광고 API' 표현도 '네이버 실제 검색 데이터'로 순화. 기본값은 여전히 '뒤에 붙는 말만'(빠름).
 - v6.29: 메뉴 UI 개편 — 상단 가로 탭(st.tabs)을 **왼쪽 사이드바 세로 메뉴(st.radio, SELECTED_MENU)**로 이전. 8개 화면 라벨은 기존 탭과 동일 문자열 유지, 각 `with tabX:` 블록을 `if SELECTED_MENU == "라벨":` 가드로 치환(선택된 화면만 렌더 → 매 rerun마다 8탭 전부 그리던 부담도 감소). 사이드바 최상단에 '🧭 메뉴' 배치 → 그 아래 기존 'API 설정'. 라디오 key로 새로고침에도 선택 유지. ⚠ 로컬 파이썬 없어 정적 검토만 — 배포 후 실행 확인 필요.
@@ -238,6 +239,7 @@ with st.sidebar:
     # ---- 내비게이션 메뉴 ----
     st.markdown('<div class="side-label">메뉴</div>', unsafe_allow_html=True)
     MENU_ITEMS = [
+        "🔍 한 번에 보기",
         "🪓 세부 글감 파기", "🎯 키워드 검증 · 쓸까 말까", "📋 여러 개 한번에 검증",
         "🏠 홈 · 뭐 쓸지 둘러보기", "🔥 글감 찾기 · 뭐가 뜨나", "📰 오늘의 소재 · 보도자료",
         "🤖 AI 키워드 (모델별)", "📈 구글 트렌드 비교",
@@ -1395,8 +1397,227 @@ def suggest_tab(reason, target_tab, action=""):
     st.warning(msg)
 
 
+# ================================================
+# v6.32: '한 번에 보기' 통합 화면용 헬퍼
+# ================================================
+def get_active_keys():
+    """활성 네이버 키. 우선순위 ① 서버 Secrets(공개형 — 방문자 키 불필요) ② 방문자 입력.
+    반환: (keys_dict|None, source: 'server'|'user'|None). 하이브리드라 혼자 쓸 때나 공개할 때나 코드 동일."""
+    need = ("client_id", "client_secret", "ad_api_key", "ad_secret_key", "ad_customer_id")
+    try:
+        sec = st.secrets.get("naver")  # .streamlit/secrets.toml 의 [naver] (없으면 예외/None)
+        if sec and all(sec.get(k) for k in need):
+            return {k: sec.get(k) for k in need}, "server"
+    except Exception:
+        pass
+    if st.session_state.get("api_configured") and st.session_state.get("api_keys"):
+        return st.session_state.api_keys, "user"
+    return None, None
+
+
+def fetch_news_titles_free(query, limit=10):
+    """키 없이 뉴스 제목 수집 — 구글 뉴스 RSS(한국어). 반환은 search_news와 동일 형태."""
+    import xml.etree.ElementTree as ET
+    from urllib.parse import quote
+    url = f"https://news.google.com/rss/search?q={quote(query)}&hl=ko&gl=KR&ceid=KR:ko"
+    try:
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        r.raise_for_status()
+        root = ET.fromstring(r.content)
+    except Exception as e:
+        return {"error": f"뉴스 수집 실패: {str(e)[:120]}", "news": []}
+    out, seen = [], set()
+    for item in root.iter("item"):
+        t = (item.findtext("title") or "").strip()
+        if t and t not in seen:
+            seen.add(t)
+            out.append({"title": t, "link": item.findtext("link") or "", "pubDate": item.findtext("pubDate") or ""})
+        if len(out) >= limit:
+            break
+    if not out:
+        return {"error": "뉴스 결과 없음", "news": []}
+    return {"error": None, "news": out}
+
+
+def quick_reco(monthly, comp):
+    """연관어 빠른 추천 판정 (문서수 없이 검색량+광고경쟁만). 블로거 스위트스팟 기준. 정밀판정은 '이걸로 검색'."""
+    if not monthly:
+        return "·", ""
+    if 1000 <= monthly <= 30000 and comp != "높음":
+        return "🟢", "추천"
+    if monthly > 100000:
+        return "🔴", "너무 넓음"
+    if monthly < 500:
+        return "⚪", "검색량 적음"
+    return "🟡", "보통"
+
+
+def one_action_tip(res, grade):
+    """판정 카드 아래 '그래서 뭘 하면 되나' 한 줄 (거북이버프식 실행 조언)."""
+    search = res.get("monthly_search", 0) or 0
+    if grade == "불합격":
+        if search >= 30000:
+            return "🔴 너무 넓은 키워드예요 — 이걸론 상위노출이 어려워요. 아래 **추천 연관 키워드**에서 세부 글감을 골라보세요."
+        return "🔴 경쟁이 세요 — 더 구체적인 세부 키워드로 좁혀보세요 (아래 추천 연관어)."
+    if grade == "보통":
+        return "🟡 쓸 수는 있어요 — 검색량이 받쳐주면 도전, 아니면 아래 연관어에서 더 쉬운 걸 골라보세요."
+    return "🟢 바로 쓰기 좋아요! 마음 정했으면 blog_ai_writer로 글 쓰러 가세요."
+
+
 # 메뉴는 왼쪽 사이드바 라디오(SELECTED_MENU)로 선택 — 선택된 화면만 렌더.
 # (기존 st.tabs 가로 탭 → 사이드바 세로 메뉴로 이전, v6.29)
+
+# ============ 화면: 🔍 한 번에 보기 (v6.32 통합 기본 화면) ============
+# 키워드 하나 → 판정 → [추천 연관어] → [정보수집] 을 한 화면에서. (거북이버프 황금키워드식)
+if SELECTED_MENU == "🔍 한 번에 보기":
+    keys, key_src = get_active_keys()
+
+    st.markdown('<div class="main-header">🔍 한 번에 보기</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">키워드 하나 넣고 엔터 → 판정·추천 연관어·뉴스를 이 화면에서 다 봅니다.</div>', unsafe_allow_html=True)
+
+    # ── 검색줄 (엔터로도 제출되도록 form) ──
+    with st.form("one_search", clear_on_submit=False):
+        cf1, cf2 = st.columns([6, 2])
+        with cf1:
+            in_kw = st.text_input("키워드", placeholder="예: 아이폰", label_visibility="collapsed")
+        with cf2:
+            in_stage = st.selectbox("블로그 상태", list(VERDICT_RULES.keys()), label_visibility="collapsed")
+        go = st.form_submit_button("🔍 검색", type="primary", use_container_width=True)
+
+    if go and in_kw.strip():
+        st.session_state["one_kw"] = in_kw.strip()
+        st.session_state["one_stage_val"] = in_stage
+        st.session_state["one_show_related"] = False
+        st.session_state["one_show_news"] = False
+        st.session_state.pop("one_related", None)
+        st.session_state.pop("one_news", None)
+        if keys:
+            with st.spinner("분석 중..."):
+                st.session_state["one_result"] = analyze_keyword(in_kw.strip(), keys)
+        else:
+            st.session_state["one_result"] = None
+
+    kw = st.session_state.get("one_kw")
+    if kw:
+        res = st.session_state.get("one_result")
+        stage = st.session_state.get("one_stage_val", "신규")
+
+        if keys is None:
+            st.info("🔑 정밀 판정(검색량·경쟁)은 네이버 API 키가 있어야 나와요. 아래 **추천 연관어·뉴스는 키 없이도** 됩니다. (사이드바 하단 ⚙️ API 설정)")
+
+        # ── ① 판정 카드 ──
+        if res is not None and not res.get("error"):
+            v = judge_keyword(res, stage)
+            label = {"합격": "추천", "보통": "보통", "불합격": "비추천"}[v["grade"]]
+            colors = {"합격": ("#ecfdf5", "#047857", "#a7f3d0"),
+                      "보통": ("#fffbeb", "#b45309", "#fde68a"),
+                      "불합격": ("#fef2f2", "#b91c1c", "#fecaca")}[v["grade"]]
+            with st.container(border=True):
+                st.markdown(
+                    f'<span style="font-size:1.45rem;font-weight:800;">{kw}</span>&nbsp;&nbsp;'
+                    f'<span style="background:{colors[0]};color:{colors[1]};border:1px solid {colors[2]};'
+                    f'padding:.28rem .8rem;border-radius:999px;font-weight:700;font-size:.92rem;">{v["emoji"]} {label}</span>'
+                    f'<span style="color:#9ca3af;font-size:.8rem;margin-left:.6rem;">· {stage} 블로그 기준</span>',
+                    unsafe_allow_html=True,
+                )
+                search = res.get("monthly_search", 0) or 0
+                ratio = round(res["blog_count"] / search, 1) if search else None
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("월간 검색량", f"{search:,}")
+                m1.caption(f"PC {res.get('monthly_pc',0):,} · 모바일 {res.get('monthly_mobile',0):,}")
+                m2.metric("경쟁 글(문서수)", f"{res.get('blog_count',0):,}")
+                m2.caption(f"광고경쟁 {res.get('competition','—')}")
+                m3.metric("비율", ratio if ratio is not None else "—")
+                m3.caption("문서수÷검색량 · 낮을수록 좋음")
+                m4.metric("노출 점수", res.get("exposure_score", "—"))
+                m4.caption("높을수록 쉬움")
+
+                # 상위노출 틈새 한 줄
+                if res.get("avg_days") is not None:
+                    r30 = res.get("recent_30d", 0)
+                    gap = "최신 글이 적어 비집을 틈이 있어요" if r30 <= 3 else "최근 글이 많아 경쟁이 활발해요"
+                    st.caption(f"🔎 상위 블로그 평균 **{res['avg_days']}일 전** 글 · 최근 30일 이내 **{r30}개** — {gap}")
+
+                # 실행 조언 한 줄
+                st.markdown(
+                    f'<div style="background:#eef2ff;color:#4338ca;padding:.6rem .8rem;border-radius:10px;'
+                    f'font-size:.92rem;margin-top:.5rem;">{one_action_tip(res, v["grade"])}</div>',
+                    unsafe_allow_html=True,
+                )
+                with st.expander("왜 이 판정인가요? (근거)"):
+                    for rsn in v["reasons"]:
+                        st.write("· " + rsn)
+        elif res is not None and res.get("error"):
+            st.error(f"❌ {res['error']}")
+
+        # ── 액션 버튼 ──
+        b1, b2 = st.columns(2)
+        if b1.button("🔗 추천 연관 키워드", use_container_width=True):
+            st.session_state["one_show_related"] = True
+        if b2.button("📰 뉴스·정보 수집", use_container_width=True):
+            st.session_state["one_show_news"] = True
+
+        # ── ② 추천 연관 키워드 ──
+        if st.session_state.get("one_show_related"):
+            with st.container(border=True):
+                st.markdown(f"#### 🔗 추천 연관 키워드 &nbsp;<span style='color:#9ca3af;font-size:.85rem;'>— {kw}</span>", unsafe_allow_html=True)
+                if "one_related" not in st.session_state:
+                    with st.spinner("연관 키워드 수집 중..."):
+                        if keys:
+                            st.session_state["one_related"] = get_related_keywords_list(kw, keys, limit=10)
+                        else:
+                            ac = get_autocomplete_keywords(kw)
+                            st.session_state["one_related"] = {
+                                "error": ac.get("error"),
+                                "keywords": [{"키워드": k, "월간검색": None, "경쟁": ""} for k in ac.get("keywords", [])[:10]],
+                            }
+                rel = st.session_state["one_related"]
+                if rel.get("error"):
+                    st.warning(rel["error"])
+                elif not rel.get("keywords"):
+                    st.caption("연관 키워드가 없어요.")
+                else:
+                    hc = st.columns([4, 2, 2, 2])
+                    hc[0].caption("키워드"); hc[1].caption("빠른 판정"); hc[2].caption("월간검색"); hc[3].caption("")
+                    for i, item in enumerate(rel["keywords"]):
+                        kwn = item.get("키워드", "")
+                        emo, lab = quick_reco(item.get("월간검색"), item.get("경쟁", ""))
+                        rc = st.columns([4, 2, 2, 2])
+                        rc[0].markdown(f"**{kwn}**")
+                        rc[1].markdown(f"{emo} {lab}" if lab else "·")
+                        rc[2].write(f"{item['월간검색']:,}" if item.get("월간검색") else "—")
+                        if rc[3].button("이걸로 검색", key=f"one_rel_{i}"):
+                            st.session_state["one_kw"] = kwn
+                            st.session_state["one_show_related"] = False
+                            st.session_state["one_show_news"] = False
+                            st.session_state.pop("one_related", None)
+                            st.session_state.pop("one_news", None)
+                            st.session_state["one_result"] = analyze_keyword(kwn, keys) if keys else None
+                            st.rerun()
+                    st.caption("각 줄의 **이걸로 검색**을 누르면 위 판정이 그 키워드로 바뀝니다. (빠른 판정은 검색량 기준 · 정밀 판정은 클릭)")
+
+        # ── ③ 정보 수집 (뉴스) ──
+        if st.session_state.get("one_show_news"):
+            with st.container(border=True):
+                st.markdown(f"#### 📰 '{kw}' 관련 뉴스·소재", unsafe_allow_html=True)
+                if "one_news" not in st.session_state:
+                    with st.spinner("뉴스 수집 중..."):
+                        nr = search_news(kw, keys, display=10, sort="date") if keys else {"error": "no-key", "news": []}
+                        if nr.get("error") or not nr.get("news"):
+                            nr = fetch_news_titles_free(kw, limit=10)  # 키 없거나 실패 시 무료 폴백
+                        st.session_state["one_news"] = nr
+                nr = st.session_state["one_news"]
+                if nr.get("error"):
+                    st.warning(nr["error"])
+                else:
+                    for n in nr["news"]:
+                        if n.get("link"):
+                            st.markdown(f"- [{n['title']}]({n['link']})")
+                        else:
+                            st.markdown(f"- {n['title']}")
+                    st.caption("💡 뉴스 시점 = 검색 급증 직전 골든타임. 마음에 드는 제목을 글감으로 쓰세요.")
+    else:
+        st.caption("↑ 키워드를 넣고 검색해보세요. 예) 아이폰, 아동수당, 제습기")
 
 # ============ 탭: 트렌드 대시보드 (메인) ============
 if SELECTED_MENU == "🏠 홈 · 뭐 쓸지 둘러보기":
@@ -2235,4 +2456,4 @@ if SELECTED_MENU == "🤖 AI 키워드 (모델별)":
         st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.31 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.32 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
