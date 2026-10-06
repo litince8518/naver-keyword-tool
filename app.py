@@ -1,9 +1,10 @@
 """
-키워드 종합 분석기 v6.38
+키워드 종합 분석기 v6.39
 ====================
-네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + AI 키워드 자동수집(제미나이)
+네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + 이번 달 글감
 
 [변경 이력]
+- v6.39: (D-1007-3) ① 🤖 AI 키워드(제미나이) 탭·사이드바 키 입력 삭제 ② 🗓️ 이번 달 글감 탭 신설(월별 살림 글감 6분류 → 버튼 한 번에 한 번에 보기로 / 한꺼번에 판정 / 이어 쓰기 = 지난 글 자동완성) ③ 판정 재설계: 검색량 100 미만 불합격·300 미만 최대 보통·넓으면 감점 / 비율이 핵심(1 미만 황금 ~ 30 이상 과다) / 절대 문서수는 극단(신규 20만+)만 감점(이중 감점 제거) / 상위 글 평균 180일+면 가점 / 노출 점수(광고 경쟁·모바일 섞임)는 판정에서 제외 / 합격 3점+
 - v6.4: AI 키워드 탭 추가 (클로드·제미나이 각각 발굴 → 네이버 실측, 모델별 따로 출력)
 - v6.5: AI 키워드 탭 카테고리 선택을 드롭다운 → 버튼 그리드로 변경
 - v6.6: AI 키워드 탭 카테고리 복수 선택(토글) 지원, 결과에 카테고리 칼럼 추가
@@ -243,10 +244,10 @@ with st.sidebar:
     # ---- 내비게이션 메뉴 ----
     st.markdown('<div class="side-label">메뉴</div>', unsafe_allow_html=True)
     MENU_ITEMS = [
-        "🔍 한 번에 보기",
+        "🔍 한 번에 보기", "🗓️ 이번 달 글감",
         "🪓 세부 글감 파기", "🎯 키워드 검증 · 쓸까 말까", "📋 여러 개 한번에 검증",
         "🏠 홈 · 뭐 쓸지 둘러보기", "🔥 글감 찾기 · 뭐가 뜨나", "📰 오늘의 소재 · 보도자료",
-        "🤖 AI 키워드 (모델별)", "📈 구글 트렌드 비교",
+        "📈 구글 트렌드 비교",
     ]
     SELECTED_MENU = st.radio(
         "이동할 화면", MENU_ITEMS, key="nav_menu", label_visibility="collapsed"
@@ -312,31 +313,6 @@ with st.sidebar:
                 st.rerun()
             else:
                 st.error("⚠️ 5개 키 모두 입력하세요")
-
-        st.markdown("---")
-        st.caption("**Gemini (선택)** · aistudio.google.com — 무료 · AI 키워드 자동수집용")
-        gemini_key = st.text_input("Gemini API Key", value=st.session_state.ai_keys.get("gemini_api_key", ""), type="password", key="gemini_key_input")
-        c_ai1, c_ai2 = st.columns(2)
-        with c_ai1:
-            if st.button("💾 저장", use_container_width=True, key="save_ai_keys"):
-                if gemini_key:
-                    ai_dict = {"gemini_api_key": gemini_key.strip()}
-                    st.session_state.ai_keys = ai_dict
-                    save_ai_keys_to_localstorage(ai_dict)
-                    st.success("✅ 저장됨")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("키를 입력하세요")
-        with c_ai2:
-            if st.button("🗑️ 삭제", use_container_width=True, key="clear_ai_keys"):
-                st.session_state.ai_keys = {}
-                clear_ai_keys_localstorage()
-                st.success("삭제됨")
-                time.sleep(1)
-                st.rerun()
-        if st.session_state.ai_keys.get("gemini_api_key"):
-            st.caption("Gemini ✅")
 
 
 # ================================================
@@ -524,13 +500,14 @@ BLOG_PROFILES = {
 # v6.27: 판정 축 = 비율(문서수÷검색량)·문서 수·검색량·노출 점수 (전부 organic 신호).
 # 광고 경쟁강도는 '상업성'이라 판정 점수에서 뺐다(안내만). 블로그 상태(신규/기존)로 문서수 기준을 다르게 적용.
 VERDICT_RULES = {
+    # v6.39: 판정 재설계(D-1007-3). 문서 수는 '비율'에 이미 들어 있으므로 절대값은 극단만 본다(이중 감점 제거).
     "신규": {
-        "doc_good": 10000, "doc_ok": 30000,      # 문서 수: 1만 미만 좋음 / 3만 미만 보통
-        "search_low": 1000, "search_high": 30000, # 검색량: 1천~3만이 적당
+        "search_min": 100, "search_soft": 300, "search_high": 30000,  # 100 미만 = 수요 없음 / 300 미만 = 롱테일(최대 보통) / 3만 초과 = 넓음
+        "doc_huge": 200000,                                           # 문서 20만 이상 = 판이 너무 큼
     },
     "기존": {
-        "doc_good": 30000, "doc_ok": 80000,
-        "search_low": 1000, "search_high": 100000,
+        "search_min": 100, "search_soft": 300, "search_high": 100000,
+        "doc_huge": 1000000,
     },
 }
 
@@ -548,65 +525,76 @@ def cat_hint_for(category_label):
 
 def judge_keyword(result, blog_stage="신규"):
     """키워드가 해당 블로그 단계에 적합한지 등급 + 이유로 판정.
-    v6.27: 판정 기준 교정.
-      [문제] 판정이 화면에 보이는 '비율(문서수÷검색량)'을 무시하고, '경쟁강도(=검색광고 광고주 경쟁)'를
-        organic 랭킹 난이도처럼 감점했다 → 비율 좋은 키워드가 보통, 비율 나쁜 키워드가 합격으로 뒤집혀 보였다.
-      [교정] ① 비율을 판정의 핵심 축으로 반영 ② 광고 경쟁은 상업성 지표이지 검색 랭킹 난이도가 아니므로
-        점수에서 제외(안내만). organic 신호(비율·문서수·검색량·노출점수)로만 등급을 매긴다."""
+    v6.39 재설계(D-1007-3) — 사장님 "판정 기준 다시 검토":
+      [문제1] 검색량이 거의 없어도(예: 50회) 비율·문서수가 좋으면 '합격'이 떴다 → 아무도 안 찾는 글을 추천.
+      [문제2] 문서 수를 '비율'과 '절대 문서수'로 두 번 감점 → 검색 5천·문서 4만 같은 쓸 만한 키워드가 불합격.
+      [문제3] 노출 점수에 광고 경쟁(25%)·모바일 비중(15%)이 섞여 v6.27 원칙(광고 경쟁은 랭킹 난이도 아님)과 어긋났다.
+    [새 기준] ① 수요(검색량): 100 미만 불합격 · 300 미만 최대 보통 · 너무 넓으면 감점
+             ② 비율(문서수÷검색량) = 핵심: 1 미만 황금 ~ 30 이상 경쟁 과다
+             ③ 절대 문서수는 극단(20만 이상)만 감점
+             ④ 상위 글이 오래됐으면(평균 180일+) 새 글이 들어갈 틈 → 가점
+             ⑤ 광고 경쟁은 안내만. 노출 점수는 화면 참고용으로만 남기고 판정엔 안 씀."""
     rule = VERDICT_RULES.get(blog_stage, VERDICT_RULES["신규"])
     doc = result.get("blog_count", 0) or 0
     comp = result.get("competition", "")
     search = result.get("monthly_search", 0) or 0
-    score = result.get("exposure_score", 0) or 0
+    avg_days = result.get("avg_days")
     ratio = round(doc / search, 1) if search else None  # 표의 '비율'과 동일 계산
 
     reasons = []
-    points = 0  # 합격 점수 (높을수록 좋음)
+    points = 0
+    cap = None  # 수요가 약하면 등급 상한
 
-    # 1) 비율(문서수÷검색량) — 수요 대비 경쟁. 새 블로그 판정의 핵심 (v6.27)
-    if ratio is not None:
-        if ratio < 3:
-            points += 2; reasons.append(f"✅ 비율 {ratio} (수요 대비 경쟁 적음)")
-        elif ratio < 10:
-            points += 1; reasons.append(f"🟡 비율 {ratio} (보통)")
-        else:
-            points -= 2; reasons.append(f"🔴 비율 {ratio} (경쟁 과다 — 문서가 검색량보다 훨씬 많음)")
-
-    # 2) 블로그 문서 수(절대 경쟁자 수) — 비율이 좋아도 문서 자체가 너무 많으면 새 블로그는 못 뚫는다
-    if doc < rule["doc_good"]:
-        points += 2; reasons.append(f"✅ 경쟁 글 {doc:,}개로 적음")
-    elif doc < rule["doc_ok"]:
-        points += 1; reasons.append(f"🟡 경쟁 글 {doc:,}개로 보통")
-    else:
-        points -= 3; reasons.append(f"🔴 경쟁 글 {doc:,}개로 많음 (새 블로그가 뚫기 어려움)")
-
-    # 3) 검색량 적정 구간 (수요)
-    if search < rule["search_low"]:
-        reasons.append(f"🟡 검색량 {search:,}회로 적음 (수요 약함)")
+    # 1) 수요 — 찾는 사람이 있어야 쓴다
+    if search < rule["search_min"]:
+        cap = "불합격"; reasons.append(f"🔴 검색량 {search:,}회 — 찾는 사람이 거의 없어요")
+    elif search < rule["search_soft"]:
+        cap = "보통"; reasons.append(f"🟡 검색량 {search:,}회 — 작지만 확실한 롱테일 (최대 '보통')")
     elif search <= rule["search_high"]:
-        points += 1; reasons.append(f"✅ 검색량 {search:,}회로 적당")
+        points += 1; reasons.append(f"✅ 검색량 {search:,}회 — 적당해요")
     else:
-        reasons.append(f"🟡 검색량 {search:,}회로 큼 (넓은 키워드)")
+        points -= 1; reasons.append(f"🟡 검색량 {search:,}회 — 넓은 키워드 (큰 블로그·언론이 선점) → 세부 키워드 추천")
 
-    # 4) 노출 점수 참고
-    if score >= 55:
-        points += 1; reasons.append(f"✅ 노출 점수 {score}점 (쉬움)")
-    elif score < 35:
-        points -= 1; reasons.append(f"🔴 노출 점수 {score}점 (어려움)")
+    # 2) 비율(문서수÷검색량) — 판정의 핵심
+    if ratio is not None:
+        if ratio < 1:
+            points += 3; reasons.append(f"✅ 비율 {ratio} — 황금 (찾는 사람보다 글이 적어요)")
+        elif ratio < 3:
+            points += 2; reasons.append(f"✅ 비율 {ratio} — 수요 대비 경쟁이 적어요")
+        elif ratio < 10:
+            points += 1; reasons.append(f"🟡 비율 {ratio} — 보통")
+        elif ratio < 30:
+            points -= 1; reasons.append(f"🔴 비율 {ratio} — 글이 검색량보다 10배 넘게 많아요")
+        else:
+            points -= 3; reasons.append(f"🔴 비율 {ratio} — 경쟁 과다")
 
-    # 5) 경쟁강도(광고 경쟁) — 점수에 넣지 않음(안내만). 검색광고 경쟁은 '상업성'이지 검색 랭킹 난이도가 아니다. (v6.27)
+    # 3) 절대 문서수 — 극단만
+    if doc >= rule["doc_huge"]:
+        points -= 1; reasons.append(f"🔴 경쟁 글 {doc:,}개 — 판이 너무 커요")
+    else:
+        reasons.append(f"ℹ️ 경쟁 글 {doc:,}개")
+
+    # 4) 상위 글 신선도 — 오래된 글이 자리 차지하면 틈이 있다
+    if avg_days is not None:
+        if avg_days >= 180:
+            points += 1; reasons.append(f"✅ 상위 글 평균 {int(avg_days)}일 전 — 오래된 글이 자리 차지 중, 새 글이 들어갈 틈")
+        elif avg_days <= 30:
+            reasons.append(f"ℹ️ 상위 글이 최근 글 위주 (평균 {int(avg_days)}일) — 시기성 키워드라 빨리 쓰는 게 유리")
+
+    # 5) 광고 경쟁 — 안내만 (랭킹 난이도가 아니라 상업성)
     if comp == "높음":
-        reasons.append("ℹ️ 광고 경쟁 높음 (상업성 있는 키워드 — 랭킹 난이도와 무관, 광고수익엔 오히려 +)")
-    elif comp == "낮음":
-        reasons.append("ℹ️ 광고 경쟁 낮음 (참고용)")
+        reasons.append("ℹ️ 광고 경쟁 높음 — 상업성 있는 키워드 (랭킹 난이도와 무관, 광고 수익엔 +)")
 
-    # 등급 결정 (비율 반영으로 만점이 +6으로 올랐으나 임계값은 유지)
-    if points >= 4:
+    if points >= 3:
         grade, emoji = "합격", "🟢"
     elif points >= 1:
         grade, emoji = "보통", "🟡"
     else:
         grade, emoji = "불합격", "🔴"
+    if cap == "불합격":
+        grade, emoji = "불합격", "🔴"
+    elif cap == "보통" and grade == "합격":
+        grade, emoji = "보통", "🟡"
 
     return {"grade": grade, "emoji": emoji, "reasons": reasons, "points": points}
 
@@ -1301,111 +1289,6 @@ def get_trend_direction(keyword, keys):
         "arrow": arrow, "word": word,
     }
 
-
-# ================================================
-# AI 키워드 자동수집 (클로드 / 제미나이)
-# ================================================
-def _build_ai_keyword_prompt(category_label, n=12):
-    return f"""당신은 네이버 블로그 SEO 키워드 발굴 전문가입니다.
-'{category_label}' 분야에서 지금(2026년 6월) 한국 네이버 블로그에 쓰면 좋을 키워드를 {n}개 발굴하세요.
-
-[중요] 가능하면 web_search로 현재 트렌드를 실제 확인하고 뽑으세요. 기억으로만 채우지 마세요.
-
-[가장 중요한 규칙 — 키워드 길이]
-- longtail은 반드시 사람이 네이버 검색창에 실제로 치는 **2~4단어, 15자 이내**의 짧은 검색어여야 합니다.
-- 문장처럼 길게 쓰지 마세요. 네이버는 긴 문장의 검색량을 집계하지 않아 측정이 불가능합니다.
-- 연도(2026), 조사(이/가/을/를), 서술어(~방법/~안내/~여부/~총정리), 수식어를 빼고 핵심 명사만 남기세요.
-
-  나쁜 예(문장형, 측정 불가):
-   "2026 여름방학 초등 돌봄교실 신청 방법" / "부모급여 어린이집 다니면 얼마"
-  좋은 예(2~4단어, 검색량 잡힘):
-   "초등 돌봄교실 신청" / "부모급여 어린이집" / "아동수당 소득기준" / "육아휴직 급여 인상"
-
-[그 외 규칙]
-- big에는 경쟁 센 대표 키워드, longtail에는 위 규칙대로 다듬은 짧은 공략 키워드.
-- 기간 구분(period)은 '월간'(시즌·정책) / '주간'(상승 트렌드) / '전일'(실시간 시사) 중 하나.
-
-[출력 형식] 아래 JSON만 출력하세요. 설명·마크다운·코드펜스 금지.
-{{"keywords":[{{"period":"월간","big":"빅키워드","longtail":"2~4단어 짧은 키워드","tip":"포스팅 작성 팁 한 줄"}}]}}
-"""
-
-
-def _extract_json(text):
-    """모델 응답에서 JSON 블록만 안전하게 추출"""
-    if not text:
-        return None
-    t = text.strip()
-    # 코드펜스 제거
-    t = t.replace("```json", "").replace("```", "").strip()
-    # 첫 { 부터 마지막 } 까지
-    start = t.find("{")
-    end = t.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
-    try:
-        return json.loads(t[start:end + 1])
-    except Exception:
-        return None
-
-
-def generate_keywords_gemini(category_label, api_key, n=12):
-    prompt = _build_ai_keyword_prompt(category_label, n)
-    try:
-        r = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
-            headers={"content-type": "application/json"},
-            json={"contents": [{"parts": [{"text": prompt}]}]},
-            timeout=60,
-        )
-        r.raise_for_status()
-        data = r.json()
-        text = ""
-        for cand in data.get("candidates", []):
-            for part in cand.get("content", {}).get("parts", []):
-                text += part.get("text", "")
-        parsed = _extract_json(text)
-        if not parsed or "keywords" not in parsed:
-            return {"error": "응답 파싱 실패", "raw": text[:300]}
-        return {"keywords": parsed["keywords"]}
-    except requests.exceptions.HTTPError as e:
-        code = e.response.status_code
-        try:
-            body = e.response.json()
-            detail = body.get("error", {}).get("message", "") or str(body)[:200]
-        except Exception:
-            detail = e.response.text[:200]
-        return {"error": f"Gemini API 오류 ({code}): {detail}"}
-    except Exception as e:
-        return {"error": f"Gemini 호출 오류: {e}"}
-
-
-def measure_ai_keywords(kw_list, keys):
-    """AI가 뽑은 키워드 리스트를 네이버 실측에 투입 → DataFrame용 rows 반환"""
-    rows = []
-    for item in kw_list:
-        longtail = (item.get("longtail") or item.get("big") or "").strip()
-        if not longtail:
-            continue
-        res = analyze_keyword(longtail, keys)
-        if res.get("error"):
-            rows.append({
-                "기간": item.get("period", ""),
-                "추천 롱테일": longtail,
-                "월간검색": "-",
-                "블로그문서": "-",
-                "난이도": res.get("error", "오류"),
-                "작성 팁": item.get("tip", ""),
-            })
-        else:
-            rows.append({
-                "기간": item.get("period", ""),
-                "추천 롱테일": longtail,
-                "월간검색": res.get("monthly_search", 0),
-                "블로그문서": res.get("blog_count", 0),
-                "난이도": f"{res.get('difficulty_emoji','')} {res.get('difficulty','')}",
-                "작성 팁": item.get("tip", ""),
-            })
-    return rows
 
 
 # ================================================
@@ -2480,92 +2363,132 @@ if SELECTED_MENU == "🪓 세부 글감 파기":
                 st.session_state["sub_rows"] = rows
                 st.rerun()
 
-# ============ 탭: AI 키워드 (모델별) ============
-if SELECTED_MENU == "🤖 AI 키워드 (모델별)":
-    st.info("""🤖 **제미나이가 키워드를 발굴** → 네이버 실측(검색량·문서수·난이도)으로 검증합니다.  
-    🟢 AI는 '후보 발상'만 — 최종 판정은 네이버 실측입니다 (AI 추정 등급은 믿지 않음).  
-    무료 한도(분당 호출 수)가 있어, 카테고리를 너무 많이 한꺼번에 돌리면 429가 날 수 있어요.""")
+# ============ 탭: 🗓️ 이번 달 글감 (v6.39 · D-1007-3) ============
+# 사장님 "키워드가 어렵다 — 무엇을 쓸지 떠올리는 게 막힌다" → 글감 샘 3개(달력·이어쓰기·오늘 내 살림) 중
+# 달력과 이어쓰기를 화면으로. 글감은 '주제 씨앗'일 뿐 — 판정은 실측(검색량·문서수·비율)으로.
+MONTHLY_TOPICS = {
+    1:  {"세탁": ["패딩 세탁", "니트 정전기", "수건 쉰내"], "청소": ["결로 곰팡이", "창틀 물기", "가습기 청소"],
+         "주방": ["떡국떡 보관", "귤 보관법", "냉동실 정리"], "가전": ["전기장판 전기요금", "온수매트 물 교체", "가습기 세척"],
+         "생활비": ["난방비 절약", "연말정산 준비", "관리비 줄이기"], "차": ["겨울 타이어 공기압", "차 배터리 방전", "와이퍼 결빙"]},
+    2:  {"세탁": ["패딩 보관 전 세탁", "롱패딩 냄새", "이불 세탁 주기"], "청소": ["욕실 곰팡이", "현관 신발장 냄새", "베란다 결로"],
+         "주방": ["설 음식 보관", "남은 전 냉동", "기름때 청소"], "가전": ["가습기 끄고 보관", "공기청정기 필터", "전기밥솥 냄새"],
+         "생활비": ["연말정산 환급 조회", "새학기 준비물", "통신비 절약"], "차": ["명절 장거리 점검", "차 실내 습기", "블랙박스 배터리"]},
+    3:  {"세탁": ["겨울옷 정리 세탁", "니트 보관법", "운동화 세탁"], "청소": ["미세먼지 창문 청소", "대청소 순서", "방충망 청소"],
+         "주방": ["봄나물 손질", "딸기 보관법", "냉장고 정리"], "가전": ["공기청정기 필터 교체", "에어컨 미리 점검", "청소기 먼지통"],
+         "생활비": ["새학기 비용 줄이기", "봄 이사 체크리스트", "자동차세 연납"], "차": ["봄 세차 송진", "황사 후 세차", "타이어 교체 시기"]},
+    4:  {"세탁": ["황사 빨래 실내건조", "이불 커버 교체", "흰 운동화 얼룩"], "청소": ["꽃가루 창틀 청소", "베란다 물청소", "커튼 세탁"],
+         "주방": ["두릅 손질", "도시락 반찬 보관", "식초 활용 청소"], "가전": ["에어컨 필터 청소", "선풍기 꺼내기 전 청소", "제습기 점검"],
+         "생활비": ["종합소득세 준비", "가정의 달 지출 계획", "보험료 점검"], "차": ["꽃가루 세차", "에어컨 필터 교체", "봄 나들이 차량 점검"]},
+    5:  {"세탁": ["여름 이불 세탁", "땀 얼룩 제거", "린넨 관리"], "청소": ["욕실 환기", "실리콘 곰팡이", "주방 후드 청소"],
+         "주방": ["매실청 담그기", "마늘 보관법", "도시락 상하지 않게"], "가전": ["에어컨 첫 가동 점검", "냉장고 온도 설정", "음식물 처리기"],
+         "생활비": ["종합소득세 신고", "근로장려금 신청", "가정의 달 선물비"], "차": ["에어컨 냄새 제거", "선팅 고르기", "장거리 졸음 예방"]},
+    6:  {"세탁": ["장마철 빨래 냄새", "제습기 빨래 건조", "곰팡이 핀 옷"], "청소": ["장마 곰팡이 예방", "신발장 습기", "욕실 배수구 냄새"],
+         "주방": ["장마철 쌀 보관", "음식 쉽게 상할 때", "도마 곰팡이"], "가전": ["제습기 전기요금", "에어컨 제습 모드", "선풍기 소음"],
+         "생활비": ["여름 전기요금 누진제", "휴가비 아끼기", "자동차보험 갱신"], "차": ["장마철 와이퍼", "차 유리 김서림", "침수 차량 확인"]},
+    7:  {"세탁": ["땀 냄새 빨래", "수영복 세탁", "흰 티 누런 얼룩"], "청소": ["초파리 없애기", "음식물 쓰레기 냄새", "에어컨 냄새"],
+         "주방": ["수박 보관법", "냉장고 파먹기", "여름 반찬 보관"], "가전": ["에어컨 전기요금 줄이기", "에어컨 곰팡이", "냉장고 성에"],
+         "생활비": ["여름휴가 경비", "전기요금 감면", "방학 식비"], "차": ["여름 차 안 온도", "타이어 공기압 여름", "블랙박스 고장"]},
+    8:  {"세탁": ["여름옷 보관 세탁", "운동화 냄새", "베개 세탁"], "청소": ["벌레 퇴치", "베란다 배수구", "곰팡이 얼룩 제거"],
+         "주방": ["복숭아 보관", "남은 수박 활용", "냉동 과일 보관"], "가전": ["에어컨 끄기 전 송풍", "제습기 보관", "정수기 청소"],
+         "생활비": ["추석 선물 준비", "2학기 학원비", "전기요금 고지서 확인"], "차": ["휴가 후 차 점검", "차 실내 냄새", "엔진오일 교체 주기"]},
+    9:  {"세탁": ["여름옷 정리 보관", "이불 교체 세탁", "니트 꺼내기 전 관리"], "청소": ["에어컨 청소 후 보관", "환절기 먼지", "방충망 정리"],
+         "주방": ["추석 음식 보관", "남은 전 활용", "햇밤 보관"], "가전": ["에어컨 커버 보관", "가습기 꺼내기", "선풍기 보관"],
+         "생활비": ["추석 장보기 아끼기", "명절 교통비", "가을 이사 준비"], "차": ["명절 귀성 점검", "타이어 마모 확인", "차 에어컨 곰팡이"]},
+    10: {"세탁": ["차렵이불 세탁", "여름옷 누런 얼룩", "니트 보풀"], "청소": ["환절기 결로 예방", "방충망 떼기 전 청소", "욕실 실리콘 곰팡이"],
+         "주방": ["햅쌀 보관", "고구마 보관법", "밤 삶는 법"], "가전": ["전기장판 꺼낼 때 점검", "가습기 첫 세척", "제습기 넣기 전 정리"],
+         "생활비": ["보일러 틀기 전 점검", "겨울 난방비 줄이기", "에너지바우처"], "차": ["타이어 공기압 기온", "겨울 대비 점검", "워셔액 교체"]},
+    11: {"세탁": ["패딩 꺼내 세탁", "전기장판 세탁", "겨울 이불 세탁"], "청소": ["창문 단열", "결로 곰팡이", "보일러 배관 점검"],
+         "주방": ["김장 준비", "절임배추 보관", "무 보관법"], "가전": ["온수매트 처음 쓸 때", "전기히터 전기요금", "가습기 청소 주기"],
+         "생활비": ["난방비 지원", "연말정산 미리보기", "김장 비용"], "차": ["겨울 타이어", "부동액 점검", "성에 제거"]},
+    12: {"세탁": ["패딩 세탁 주기", "수면바지 보풀", "목도리 세탁"], "청소": ["연말 대청소", "결로 물기 닦기", "현관 외풍"],
+         "주방": ["귤 보관법", "김장김치 보관", "연말 모임 음식 보관"], "가전": ["난방 텐트", "전기장판 화재 예방", "가습기 세균"],
+         "생활비": ["연말정산 공제 챙기기", "관리비 난방비", "자동차세 연납 신청"], "차": ["눈길 운전", "차 배터리 겨울", "와이퍼 교체"]},
+}
+FOLLOWUP_HINTS = ["원인", "해결", "주의할 점", "하는 법", "비용", "언제"]
 
-    if not st.session_state.api_configured:
-        st.warning("👈 먼저 네이버 API 키를 입력하세요 (실측에 필요)")
-    elif not st.session_state.ai_keys.get("gemini_api_key"):
-        st.warning("👈 사이드바 '🤖 Gemini API 키'에서 키를 입력하세요 (무료 발급)")
+
+def _kst_month():
+    return (datetime.utcnow() + timedelta(hours=9)).month
+
+
+def _jump_to_one(kw):
+    """글감 → '🔍 한 번에 보기'로 바로 이동해 판정까지 (버튼 on_click 콜백 — 위젯 그리기 전에 실행)."""
+    st.session_state["nav_menu"] = "🔍 한 번에 보기"
+    st.session_state["one_kw"] = kw
+    st.session_state["one_path"] = [kw]
+    st.session_state["one_show_related"] = True
+    st.session_state["one_show_news"] = False
+    st.session_state.pop("one_related", None)
+    st.session_state.pop("one_news", None)
+    keys_, _ = get_active_keys()
+    if keys_:
+        res_, trend_ = one_search(kw, keys_)
+        st.session_state["one_result"] = res_
+        st.session_state["one_trend"] = trend_
     else:
-        _ai_cats = list(CATEGORY_NEWS_QUERIES.keys())
-        if "ai_cat_selected" not in st.session_state:
-            st.session_state.ai_cat_selected = [_ai_cats[0]]
-        # 구버전(문자열) 호환 — 리스트로 승격
-        if isinstance(st.session_state.ai_cat_selected, str):
-            st.session_state.ai_cat_selected = [st.session_state.ai_cat_selected]
+        st.session_state["one_result"] = None
+        st.session_state["one_trend"] = None
 
-        st.markdown("**카테고리 선택** (여러 개 클릭 가능 · 다시 클릭하면 해제)")
-        _per_row = 3
-        for _i in range(0, len(_ai_cats), _per_row):
-            _cols = st.columns(_per_row)
-            for _j, _cat in enumerate(_ai_cats[_i:_i + _per_row]):
-                with _cols[_j]:
-                    _is_sel = (_cat in st.session_state.ai_cat_selected)
-                    if st.button(
-                        ("✅ " if _is_sel else "") + _cat,
-                        key=f"ai_cat_btn_{_i + _j}",
-                        use_container_width=True,
-                        type=("primary" if _is_sel else "secondary"),
-                    ):
-                        if _is_sel:
-                            st.session_state.ai_cat_selected.remove(_cat)
-                        else:
-                            st.session_state.ai_cat_selected.append(_cat)
-                        st.rerun()
 
-        ai_cats_sel = st.session_state.ai_cat_selected
-        if ai_cats_sel:
-            st.caption(f"선택됨 ({len(ai_cats_sel)}개): **{', '.join(ai_cats_sel)}**")
-        else:
-            st.caption("⚠️ 카테고리를 하나 이상 선택하세요")
-        ai_n = st.slider("모델당·카테고리당 키워드 개수", 6, 20, 12, key="ai_n_slider")
+if SELECTED_MENU == "🗓️ 이번 달 글감":
+    keys, key_src = get_active_keys()
+    st.markdown('<div class="main-header">🗓️ 이번 달 글감</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">뭘 쓸지 막막할 때 — 이번 달 사람들이 하는 살림에서 고르고, 숫자로 확인하세요.</div>', unsafe_allow_html=True)
 
-        has_gemini = bool(st.session_state.ai_keys.get("gemini_api_key"))
+    st.info("**고르는 기준 3가지** — ① 내가 사진 찍고 직접 해 볼 수 있나 ② 판정이 🟢인가 ③ 네이버에 검색했을 때 위에 일반 블로그가 보이나. 셋 다 예면 쓰세요.")
 
-        if st.button("🚀 AI 키워드 생성 + 네이버 실측", type="primary", use_container_width=True, key="run_ai_kw"):
-            if not ai_cats_sel:
-                st.warning("카테고리를 하나 이상 선택하세요")
-            elif not has_gemini:
-                st.warning("사이드바에서 Gemini API 키를 먼저 입력하세요")
-            else:
-                st.session_state["ai_kw_gemini"] = None
-                _total = len(ai_cats_sel)
-                _g_rows, _g_err = [], None
-                for _gi, _cat in enumerate(ai_cats_sel):
-                    with st.spinner(f"🔵 제미나이 키워드 발굴+실측 ({_gi+1}/{_total}): {_cat}"):
-                        g_res = generate_keywords_gemini(_cat, st.session_state.ai_keys["gemini_api_key"], ai_n)
-                        if g_res.get("error"):
-                            _g_err = g_res["error"]
-                            continue
-                        for _row in measure_ai_keywords(g_res["keywords"], st.session_state.api_keys):
-                            _row = {"카테고리": _cat, **_row}
-                            _g_rows.append(_row)
-                if _g_rows:
-                    st.session_state["ai_kw_gemini"] = {"rows": _g_rows}
-                elif _g_err:
-                    st.session_state["ai_kw_gemini"] = {"error": _g_err}
+    # ── ① 달력 글감 ──
+    cur_m = _kst_month()
+    m = st.selectbox("월", list(range(1, 13)), index=cur_m - 1, format_func=lambda x: f"{x}월" + (" (이번 달)" if x == cur_m else ""))
+    topics = MONTHLY_TOPICS[m]
+    cols = st.columns(3)
+    for i, (cat, items) in enumerate(topics.items()):
+        with cols[i % 3]:
+            with st.container(border=True):
+                st.markdown(f"**{cat}**")
+                for j, t in enumerate(items):
+                    st.button(f"🔍 {t}", key=f"mt_{m}_{cat}_{j}", on_click=_jump_to_one, args=(t,), use_container_width=True)
 
-        st.markdown("### 🔵 제미나이 결과")
-        gdata = st.session_state.get("ai_kw_gemini")
-        if gdata is None:
-            st.caption("아직 생성 안 함" if has_gemini else "Gemini 키 없음")
-        elif gdata.get("error"):
-            st.error(gdata["error"])
-            if "429" in str(gdata["error"]):
-                st.info("⏳ 429 = 무료 한도 초과(분당 호출 수). 1~2분 기다렸다가 다시 시도하거나, 카테고리를 줄여보세요.")
-        elif gdata.get("rows"):
-            df_g = pd.DataFrame(gdata["rows"])
-            st.dataframe(df_g, use_container_width=True, hide_index=True)
-            st.download_button("⬇️ 제미나이 CSV", df_g.to_csv(index=False).encode("utf-8-sig"),
-                               "gemini_keywords.csv", "text/csv", key="dl_gemini")
-        else:
-            st.caption("결과 없음")
+    all_topics = [t for items in topics.values() for t in items]
+    if st.button(f"📊 {m}월 글감 {len(all_topics)}개 한꺼번에 판정", type="primary", disabled=keys is None):
+        rows = []
+        prog = st.progress(0)
+        for k_i, t in enumerate(all_topics):
+            q = quick_kw_check(t, keys)
+            v = judge_keyword({"monthly_search": q.get("월간검색") or 0, "blog_count": q.get("문서수") or 0,
+                               "competition": q.get("경쟁", ""), "avg_days": None}, "신규")
+            rows.append({"판정": f"{v['emoji']} {v['grade']}", "글감": t, "월간검색": q.get("월간검색"),
+                         "문서수": q.get("문서수"), "비율": q.get("비율"), "_점수": v["points"]})
+            prog.progress((k_i + 1) / len(all_topics))
+            time.sleep(0.1)
+        prog.empty()
+        st.session_state["mt_rows"] = (m, rows)
+    if keys is None:
+        st.caption("🔑 한꺼번에 판정은 네이버 API 키가 있어야 돼요. 글감 버튼은 키 없이도 눌러 볼 수 있어요.")
+    if st.session_state.get("mt_rows") and st.session_state["mt_rows"][0] == m:
+        df_mt = pd.DataFrame(st.session_state["mt_rows"][1]).sort_values("_점수", ascending=False).drop(columns=["_점수"])
+        st.dataframe(df_mt, use_container_width=True, hide_index=True)
+        st.caption("🟢부터 보세요. 마음에 드는 글감은 위 버튼을 누르면 '한 번에 보기'에서 세부 키워드까지 파고들 수 있어요.")
 
-        st.caption("💡 월간검색 높고 난이도 🟢인 키워드가 발행 1순위. 고른 키워드는 '🎯 키워드 검증' 탭에서 한 번 더 정밀 확인 → blog_ai_writer로.")
+    # ── ② 이어 쓰기 ──
+    st.markdown("---")
+    st.markdown("#### ✍️ 이어 쓰기 — 지난 글의 다음 질문")
+    st.caption("이미 쓴 글 주제를 넣으면, 그 글을 읽은 사람이 다음에 궁금해할 검색어를 보여줘요.")
+    prev = st.text_input("지난 글 주제", placeholder="예: 화장실 환기", key="mt_prev")
+    if prev.strip():
+        ac = get_autocomplete_keywords(prev.strip())
+        cand = [w for w in ac.get("keywords", []) if w != prev.strip()][:10]
+        if not cand:
+            cand = [f"{prev.strip()} {h}" for h in FOLLOWUP_HINTS]
+        pc = st.columns(2)
+        for i, w in enumerate(cand):
+            pc[i % 2].button(f"🔍 {w}", key=f"mt_prev_{i}", on_click=_jump_to_one, args=(w,), use_container_width=True)
+
+    # ── ③ 오늘 내 살림 ──
+    st.markdown("---")
+    st.markdown("#### 📝 오늘 내 살림")
+    st.caption("오늘 귀찮았던 일·안 됐던 일 한 줄이 그대로 글감이에요. 사진도 바로 찍을 수 있어 경험 글이 되고, AI 티도 줄어요. 떠오르면 위 '이어 쓰기' 칸에 넣어 검색어로 바꿔 보세요.")
+
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.38 | 네이버 + 구글 + 데이터랩 + 트렌드 + AI 키워드(제미나이)")
+st.caption("💡 키워드 종합 분석기 v6.39 | 네이버 + 구글 + 데이터랩 + 트렌드 + 이번 달 글감")
