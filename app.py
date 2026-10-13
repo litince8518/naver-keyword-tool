@@ -1,9 +1,10 @@
 """
-키워드 종합 분석기 v6.39
+키워드 종합 분석기 v6.40
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + 이번 달 글감
 
 [변경 이력]
+- v6.40: (D-1014-1) 세부 키워드 '자음 확장' — 자동완성을 "씨앗 + ㄱ~ㅎ"로 여러 번 받아 롱테일을 넓게 모음(예: '제습기'만 넣으면 8개 구매형뿐 → '제습기 ㅂ'에서 보관·버리는법·분해청소). 생성기 v12.13 '서브 키워드' 칸으로 보내기 시드에 실려 감.
 - v6.39: (D-1007-3) ① 🤖 AI 키워드(제미나이) 탭·사이드바 키 입력 삭제 ② 🗓️ 이번 달 글감 탭 신설(월별 살림 글감 6분류 → 버튼 한 번에 한 번에 보기로 / 한꺼번에 판정 / 이어 쓰기 = 지난 글 자동완성) ③ 판정 재설계: 검색량 100 미만 불합격·300 미만 최대 보통·넓으면 감점 / 비율이 핵심(1 미만 황금 ~ 30 이상 과다) / 절대 문서수는 극단(신규 20만+)만 감점(이중 감점 제거) / 상위 글 평균 180일+면 가점 / 노출 점수(광고 경쟁·모바일 섞임)는 판정에서 제외 / 합격 3점+
 - v6.4: AI 키워드 탭 추가 (클로드·제미나이 각각 발굴 → 네이버 실측, 모델별 따로 출력)
 - v6.5: AI 키워드 탭 카테고리 선택을 드롭다운 → 버튼 그리드로 변경
@@ -1147,6 +1148,37 @@ def get_autocomplete_keywords(seed):
     return {"error": None, "keywords": words}
 
 
+# v6.40 (D-1014-1): 자음 확장 — "씨앗 + ㄱ~ㅎ"로 자동완성을 여러 번 받아 롱테일을 넓게 모은다.
+#   예: "제습기"만 넣으면 8개(구매형)뿐이지만 "제습기 ㅂ"에서 보관·버리는법·분해청소가 나온다.
+#   씨앗 자체 자동완성을 맨 앞에 두어(검색 의도가 가장 가까운 것) 시드 문장·생성기 서브 키워드에 먼저 실리게 한다.
+AC_CONSONANTS = ["ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"]
+
+
+def get_autocomplete_expanded(seed, max_total=80):
+    seed = (seed or "").strip()
+    if not seed:
+        return {"error": "빈 키워드", "keywords": []}
+    words = []
+    first = get_autocomplete_keywords(seed)
+    if not first["error"]:
+        for w in first["keywords"]:
+            if w not in words:
+                words.append(w)
+    head = seed.split()[0]
+    for c in AC_CONSONANTS:
+        if len(words) >= max_total:
+            break
+        res = get_autocomplete_keywords(seed + " " + c)
+        if res["error"]:
+            continue
+        for w in res["keywords"]:
+            if head in w.replace(" ", "") and w not in words:
+                words.append(w)
+    if not words:
+        return {"error": "자동완성 결과 없음", "keywords": []}
+    return {"error": None, "keywords": words[:max_total]}
+
+
 def collect_sub_keywords(seed, keys, limit=20, prefer_related=False):
     """
     세부 키워드 수집. 기본은 자동완성(롱테일) 우선, 실패 시 공식 키워드도구 폴백.
@@ -1154,10 +1186,10 @@ def collect_sub_keywords(seed, keys, limit=20, prefer_related=False):
     반환: {"source": ..., "keywords": [...], "error": None|str}
     """
     if not prefer_related:
-        ac = get_autocomplete_keywords(seed)
+        ac = get_autocomplete_expanded(seed, max_total=max(limit, 20))   # v6.40 자음 확장
         if not ac["error"] and ac["keywords"]:
             # 씨앗을 포함하는 세부 키워드 우선 (롱테일)
-            return {"source": "자동완성", "keywords": ac["keywords"][:limit], "error": None}
+            return {"source": "자동완성(자음 확장)", "keywords": ac["keywords"][:limit], "error": None}
 
     # 공식 키워드도구 연관어 (prefer_related거나 자동완성 실패 시) — 수백 개까지 가능
     rel = get_related_keywords_list(seed, keys, limit=limit)
@@ -2491,4 +2523,4 @@ if SELECTED_MENU == "🗓️ 이번 달 글감":
 
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.39 | 네이버 + 구글 + 데이터랩 + 트렌드 + 이번 달 글감")
+st.caption("💡 키워드 종합 분석기 v6.40 | 네이버 + 구글 + 데이터랩 + 트렌드 + 이번 달 글감")
