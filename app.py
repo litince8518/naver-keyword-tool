@@ -1,9 +1,11 @@
 """
-키워드 종합 분석기 v6.40
+키워드 종합 분석기 v7.0
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + 이번 달 글감
 
 [변경 이력]
+- v7.0: (D-1014-8) 화면 전면 개편(A안 · 한 화면) — 사장님 "너무 복잡하고 조잡해". 왼쪽 메뉴 9개를 없애고 검색창 하나로: 키워드 → 세부·롱테일 키워드 판정 표(동시 3개씩 판정) → 쓸 것 체크 → 생성기로(첫째 = 메인, 나머지 = 서브 키워드). 막막할 땐 검색창 아래 이번 달 글감 버튼. '키워드 하나 자세히'(판정 이유·상위 글·추이·뉴스·더 파기)와 '다른 데서 글감 찾기'(보도자료·분야별 뉴스·뜨는 키워드·여러 개 한꺼번에·구글 트렌드)는 접어 둠. 옛 한 번에 보기·세부 글감 파기·키워드 검증·이번 달 글감 화면은 이 한 화면으로 합쳐 삭제(⭐담아두기는 표 CSV 저장으로).
+- v6.41: (D-1014-7) 돈나나 "세부 + 대비로 쪼개기" 반영 — ① 대비 키워드: 자동완성을 "씨앗 + vs·차이·비교"로도 받아 세부 글감 파기·한 번에 보기 연관어·생성기 서브 키워드에 함께 실음(⚖ 표시). 검색광고 연관어·자음 확장엔 잘 안 잡히던 것(예: 아이폰17 → vs 에어 차이·vs 17e 비교). 대비가 없는 주제(제습기 등)는 빈손이라 그냥 지나감 ② 세부 글감 파기 결과에서 "🔍 한 번에 보기로 이어서 파기" — 1단계에서 끝나던 것을 한 번에 보기의 파고들기(경로 표시)로 이어 감. ⚠ 로컬 파이썬 없어 정적 검토만.
 - v6.40: (D-1014-1) 세부 키워드 '자음 확장' — 자동완성을 "씨앗 + ㄱ~ㅎ"로 여러 번 받아 롱테일을 넓게 모음(예: '제습기'만 넣으면 8개 구매형뿐 → '제습기 ㅂ'에서 보관·버리는법·분해청소). 생성기 v12.13 '서브 키워드' 칸으로 보내기 시드에 실려 감.
 - v6.39: (D-1007-3) ① 🤖 AI 키워드(제미나이) 탭·사이드바 키 입력 삭제 ② 🗓️ 이번 달 글감 탭 신설(월별 살림 글감 6분류 → 버튼 한 번에 한 번에 보기로 / 한꺼번에 판정 / 이어 쓰기 = 지난 글 자동완성) ③ 판정 재설계: 검색량 100 미만 불합격·300 미만 최대 보통·넓으면 감점 / 비율이 핵심(1 미만 황금 ~ 30 이상 과다) / 절대 문서수는 극단(신규 20만+)만 감점(이중 감점 제거) / 상위 글 평균 180일+면 가점 / 노출 점수(광고 경쟁·모바일 섞임)는 판정에서 제외 / 합격 3점+
 - v6.4: AI 키워드 탭 추가 (클로드·제미나이 각각 발굴 → 네이버 실측, 모델별 따로 출력)
@@ -53,7 +55,7 @@ import math
 import json
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="키워드 종합 분석기", page_icon="🔍", layout="wide")
+st.set_page_config(page_title="키워드 찾기", page_icon="🔍", layout="wide")
 
 st.markdown("""
 <style>
@@ -180,8 +182,8 @@ if not st.session_state.api_configured and not st.session_state.keys_loaded_from
         st.session_state.keys_loaded_from_browser = True
         components.html(load_keys_html, height=0)
 
-st.markdown('<div class="main-header">🔍 키워드 종합 분석기</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">네이버 + 구글 + 데이터랩 + 실시간 트렌드까지</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">🔍 키워드 찾기</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">키워드 하나 넣으면 → 세부 키워드와 판정 → 쓸 것만 골라 생성기로</div>', unsafe_allow_html=True)
 
 
 def save_to_localstorage(keys_dict):
@@ -238,28 +240,12 @@ def clear_ai_keys_localstorage():
 with st.sidebar:
     # ---- 브랜드 ----
     st.markdown(
-        '<div class="brand"><span class="logo">🔍</span><span>키워드 분석기</span></div>',
+        '<div class="brand"><span class="logo">🔍</span><span>키워드 찾기</span></div>',
         unsafe_allow_html=True,
     )
 
-    # ---- 내비게이션 메뉴 ----
-    st.markdown('<div class="side-label">메뉴</div>', unsafe_allow_html=True)
-    MENU_ITEMS = [
-        "🔍 한 번에 보기", "🗓️ 이번 달 글감",
-        "🪓 세부 글감 파기", "🎯 키워드 검증 · 쓸까 말까", "📋 여러 개 한번에 검증",
-        "🏠 홈 · 뭐 쓸지 둘러보기", "🔥 글감 찾기 · 뭐가 뜨나", "📰 오늘의 소재 · 보도자료",
-        "📈 구글 트렌드 비교",
-    ]
-    SELECTED_MENU = st.radio(
-        "이동할 화면", MENU_ITEMS, key="nav_menu", label_visibility="collapsed"
-    )
-
-    with st.expander("❓ 어떤 걸 골라야 하나요?", expanded=False):
-        st.markdown("""- **오늘 뭐 쓰지?** (시의성) → 📰 오늘의 소재
-- **뭐 쓸지 모를 때** → 🏠 홈 · 🔥 글감 찾기
-- **키워드는 정했는데 고민** → 🎯 키워드 검증
-- **여러 개 한꺼번에** → 📋 여러 개 검증
-- **큰 키워드를 쪼개기** → 🪓 세부 글감 파기""")
+    # ---- v7.0: 메뉴 없음 — 한 화면 (D-1014-8) ----
+    st.caption("① 키워드 넣고 찾기 → ② 표에서 쓸 것 체크 → ③ 생성기로 보내기")
 
     # ---- 아래 '설정'을 사이드바 하단으로 고정 ----
     st.markdown('<div class="push-bottom"></div>', unsafe_allow_html=True)
@@ -1152,6 +1138,34 @@ def get_autocomplete_keywords(seed):
 #   예: "제습기"만 넣으면 8개(구매형)뿐이지만 "제습기 ㅂ"에서 보관·버리는법·분해청소가 나온다.
 #   씨앗 자체 자동완성을 맨 앞에 두어(검색 의도가 가장 가까운 것) 시드 문장·생성기 서브 키워드에 먼저 실리게 한다.
 AC_CONSONANTS = ["ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"]
+# v6.41 (D-1014-7): 대비 키워드 — "씨앗 + vs·차이·비교" 자동완성. 대비가 있는 주제(아이폰17 vs 에어 등)에서만 나온다.
+AC_CONTRAST = ["vs", "차이", "비교"]
+CONTRAST_WORDS = ("vs", "차이", "비교", "장단점", "뭐가 나", "어떤 게")
+
+
+def is_contrast(kw):
+    k = (kw or "").lower()
+    return any(w in k for w in CONTRAST_WORDS)
+
+
+def get_contrast_keywords(seed):
+    seed = (seed or "").strip()
+    if not seed:
+        return []
+    head = seed.split()[0]
+    out = []
+    for suf in AC_CONTRAST:
+        q = seed + " " + suf
+        res = get_autocomplete_keywords(q)
+        if res["error"]:
+            continue
+        for w in res["keywords"]:
+            # 입력한 그대로 되돌아온 것("제습기 차이")은 빼고, 씨앗이 든 진짜 대비어만("차이"로 "차일드락"이 따라오는 것 제외)
+            if w.replace(" ", "") == q.replace(" ", ""):
+                continue
+            if head in w.replace(" ", "") and is_contrast(w) and w not in out:
+                out.append(w)
+    return out
 
 
 def get_autocomplete_expanded(seed, max_total=80):
@@ -1165,6 +1179,9 @@ def get_autocomplete_expanded(seed, max_total=80):
             if w not in words:
                 words.append(w)
     head = seed.split()[0]
+    for w in get_contrast_keywords(seed)[:5]:   # v6.41: 대비 키워드를 자음 확장보다 먼저(개수 제한에 잘리지 않게) · 5개까지(세부 글감을 덮지 않게)
+        if w not in words:
+            words.append(w)
     for c in AC_CONSONANTS:
         if len(words) >= max_total:
             break
@@ -1329,7 +1346,7 @@ def get_trend_direction(keyword, keys):
 # ── v6.18: 잘못된 탭 사용이 감지되면 더 맞는 탭을 안내하는 통일 배너 ──
 def suggest_tab(reason, target_tab, action=""):
     """reason(왜 이 탭이 안 맞나) + target_tab(추천 탭) + action(거기서 뭘 하면 되나)."""
-    msg = f"💡 **{reason}**  \n👉 더 맞는 곳은 **`{target_tab}`** 탭이에요"
+    msg = f"💡 **{reason}**  \n👉 맨 위 검색창에서 찾아보세요"   # v7.0: 탭이 없어져 target_tab은 쓰지 않음
     if action:
         msg += f" — {action}"
     st.warning(msg)
@@ -1410,992 +1427,13 @@ def one_action_tip(res, grade):
     if grade == "불합격":
         if search >= 30000:
             return "🔴 너무 넓은 키워드예요 — 이걸론 상위노출이 어려워요. 아래 **추천 연관 키워드**에서 세부 글감을 골라보세요."
-        return "🔴 경쟁이 세요 — 더 구체적인 세부 키워드로 좁혀보세요 (아래 추천 연관어)."
+        return "🔴 경쟁이 세요 — 더 구체적인 세부 키워드로 좁혀보세요 (표의 🟢 추천이나 '이 키워드로 더 파기')."
     if grade == "보통":
-        return "🟡 쓸 수는 있어요 — 검색량이 받쳐주면 도전, 아니면 아래 연관어에서 더 쉬운 걸 골라보세요."
-    return "🟢 바로 쓰기 좋아요! 마음 정했으면 blog_ai_writer로 글 쓰러 가세요."
+        return "🟡 쓸 수는 있어요 — 검색량이 받쳐주면 도전, 아니면 표에서 더 쉬운 걸 골라보세요."
+    return "🟢 바로 쓰기 좋아요! 표에서 체크하고 생성기로 보내세요."
 
 
-# 메뉴는 왼쪽 사이드바 라디오(SELECTED_MENU)로 선택 — 선택된 화면만 렌더.
-# (기존 st.tabs 가로 탭 → 사이드바 세로 메뉴로 이전, v6.29)
-
-# ============ 화면: 🔍 한 번에 보기 (v6.32 통합 기본 화면) ============
-# 키워드 하나 → 판정 → [추천 연관어] → [정보수집] 을 한 화면에서. (거북이버프 황금키워드식)
-if SELECTED_MENU == "🔍 한 번에 보기":
-    keys, key_src = get_active_keys()
-
-    st.markdown('<div class="main-header">🔍 한 번에 보기</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">키워드 하나 넣고 엔터 → 판정·추천 연관어·뉴스를 이 화면에서 다 봅니다.</div>', unsafe_allow_html=True)
-
-    # ── 검색줄 (엔터로도 제출되도록 form) ──
-    with st.form("one_search", clear_on_submit=False):
-        cf1, cf2 = st.columns([6, 2])
-        with cf1:
-            in_kw = st.text_input("키워드", placeholder="예: 아이폰", label_visibility="collapsed")
-        with cf2:
-            in_stage = st.selectbox("블로그 상태", list(VERDICT_RULES.keys()), label_visibility="collapsed")
-        go = st.form_submit_button("🔍 검색", type="primary", use_container_width=True)
-
-    if go and in_kw.strip():
-        st.session_state["one_kw"] = in_kw.strip()
-        st.session_state["one_stage_val"] = in_stage
-        st.session_state["one_path"] = [in_kw.strip()]   # 파고들기 경로 시작
-        st.session_state["one_show_related"] = True        # 검색 즉시 연관어도 함께 펼침(버프식)
-        st.session_state["one_show_news"] = False
-        st.session_state.pop("one_related", None)
-        st.session_state.pop("one_news", None)
-        if keys:
-            with st.spinner("분석 중..."):
-                res_, trend_ = one_search(in_kw.strip(), keys)
-                st.session_state["one_result"] = res_
-                st.session_state["one_trend"] = trend_
-        else:
-            st.session_state["one_result"] = None
-            st.session_state["one_trend"] = None
-
-    kw = st.session_state.get("one_kw")
-    if kw:
-        res = st.session_state.get("one_result")
-        stage = st.session_state.get("one_stage_val", "신규")
-
-        # 파고들기 경로(브레드크럼) — 몇 단계 좁혔는지 보이게
-        path = st.session_state.get("one_path", [kw])
-        if len(path) > 1:
-            st.caption("🧭 " + "  ›  ".join(path) + f"  ({len(path)}단계째 파고드는 중)")
-
-        if keys is None:
-            st.info("🔑 정밀 판정(검색량·경쟁)은 네이버 API 키가 있어야 나와요. 아래 **추천 연관어·뉴스는 키 없이도** 됩니다. (사이드바 하단 ⚙️ API 설정)")
-
-        # ── ① 판정 카드 ──
-        if res is not None and not res.get("error"):
-            v = judge_keyword(res, stage)
-            label = {"합격": "추천", "보통": "보통", "불합격": "비추천"}[v["grade"]]
-            colors = {"합격": ("#ecfdf5", "#047857", "#a7f3d0"),
-                      "보통": ("#fffbeb", "#b45309", "#fde68a"),
-                      "불합격": ("#fef2f2", "#b91c1c", "#fecaca")}[v["grade"]]
-            with st.container(border=True):
-                st.markdown(
-                    f'<span style="font-size:1.45rem;font-weight:800;">{kw}</span>&nbsp;&nbsp;'
-                    f'<span style="background:{colors[0]};color:{colors[1]};border:1px solid {colors[2]};'
-                    f'padding:.28rem .8rem;border-radius:999px;font-weight:700;font-size:.92rem;">{v["emoji"]} {label}</span>'
-                    f'<span style="color:#9ca3af;font-size:.8rem;margin-left:.6rem;">· {stage} 블로그 기준</span>',
-                    unsafe_allow_html=True,
-                )
-                search = res.get("monthly_search", 0) or 0
-                ratio = round(res["blog_count"] / search, 1) if search else None
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("월간 검색량", f"{search:,}")
-                m1.caption(f"PC {res.get('monthly_pc',0):,} · 모바일 {res.get('monthly_mobile',0):,}")
-                m2.metric("경쟁 글(문서수)", f"{res.get('blog_count',0):,}")
-                m2.caption(f"광고경쟁 {res.get('competition','—')}")
-                m3.metric("비율", ratio if ratio is not None else "—")
-                m3.caption("문서수÷검색량 · 낮을수록 좋음")
-                m4.metric("노출 점수", res.get("exposure_score", "—"))
-                m4.caption("높을수록 쉬움")
-
-                # 상위노출 틈새 한 줄
-                if res.get("avg_days") is not None:
-                    r30 = res.get("recent_30d", 0)
-                    gap = "최신 글이 적어 비집을 틈이 있어요" if r30 <= 3 else "최근 글이 많아 경쟁이 활발해요"
-                    st.caption(f"🔎 상위 블로그 평균 **{res['avg_days']}일 전** 글 · 최근 30일 이내 **{r30}개** — {gap}")
-
-                # 검색 추이(데이터랩) — 지금 뜨는 중? 지는 중? (v6.37)
-                trend = st.session_state.get("one_trend")
-                if trend:
-                    st.caption(f"{trend['arrow']} 최근 3개월 검색 추이: **{trend['word']}** ({trend['change_pct']:+.0f}%) — 상승세면 지금이 쓸 타이밍")
-                    if trend.get("series") and len(trend["series"]) >= 4:
-                        st.line_chart(pd.DataFrame({"검색 추이": trend["series"]}), height=120)
-
-                # 실행 조언 한 줄
-                st.markdown(
-                    f'<div style="background:#eef2ff;color:#4338ca;padding:.6rem .8rem;border-radius:10px;'
-                    f'font-size:.92rem;margin-top:.5rem;">{one_action_tip(res, v["grade"])}</div>',
-                    unsafe_allow_html=True,
-                )
-                with st.expander("왜 이 판정인가요? (근거)"):
-                    for rsn in v["reasons"]:
-                        st.write("· " + rsn)
-
-            # ── 🏆 상위 노출 글 (경쟁 상대) ── (v6.36)
-            tops = res.get("top_posts") or []
-            if tops:
-                with st.container(border=True):
-                    st.markdown("#### 🏆 지금 상위에 뜬 글 <span style='color:#9ca3af;font-size:.85rem;'>— 내가 이겨야 할 경쟁자</span>", unsafe_allow_html=True)
-                    for p in tops:
-                        meta = " · ".join([x for x in [p.get("blogger", ""), p.get("postdate", "")] if x])
-                        title = p.get("title", "")
-                        link = p.get("link", "")
-                        head = f"[{title}]({link})" if link else title
-                        st.markdown(f"- {head}  \n  <span style='color:#9ca3af;font-size:.8rem;'>{meta}</span>", unsafe_allow_html=True)
-                    st.caption("💡 상위 글이 오래됐거나 개인블로그면 비집을 틈이 있어요. 최적화블로그·최근 글이 꽉 찼으면 세부 키워드로 파고드세요.")
-        elif res is not None and res.get("error"):
-            st.error(f"❌ {res['error']}")
-
-        # ── 액션 버튼 ──
-        b1, b2, b3 = st.columns(3)
-        if b1.button("🔗 추천 연관 키워드", use_container_width=True):
-            st.session_state["one_show_related"] = True
-        if b2.button("📰 뉴스·정보 수집", use_container_width=True):
-            st.session_state["one_show_news"] = True
-        if b3.button("⭐ 담아두기", use_container_width=True):  # v6.38: 발행 계획에 담기
-            saved = st.session_state.setdefault("one_saved", [])
-            if res is not None and not res.get("error"):
-                srch = res.get("monthly_search", 0) or 0
-                ratio = round(res["blog_count"] / srch, 1) if srch else None
-                label = {"합격": "추천", "보통": "보통", "불합격": "비추천"}[judge_keyword(res, stage)["grade"]]
-                row = {"키워드": kw, "판정": label, "월간검색": srch, "문서수": res.get("blog_count"), "비율": ratio}
-            else:
-                row = {"키워드": kw, "판정": "-", "월간검색": None, "문서수": None, "비율": None}
-            if any(s["키워드"] == kw for s in saved):
-                st.toast("이미 담긴 키워드예요")
-            else:
-                saved.append(row)
-                st.toast(f"⭐ '{kw}' 담았어요")
-
-        # ── ② 추천 연관 키워드 ──
-        if st.session_state.get("one_show_related"):
-            with st.container(border=True):
-                st.markdown(f"#### 🔗 추천 연관 키워드 &nbsp;<span style='color:#9ca3af;font-size:.85rem;'>— {kw}</span>", unsafe_allow_html=True)
-                if "one_related" not in st.session_state:
-                    with st.spinner("연관 키워드 수집 중..."):
-                        seed_norm = kw.replace(" ", "")
-                        # ① 키 있으면 검색광고 연관어(검색량 포함) 우선 — 걸러낼 여유분까지 넉넉히
-                        rel = get_related_keywords_list(kw, keys, limit=40) if keys else {"error": "no-key", "keywords": []}
-                        # ② 키 없거나 · keywordstool이 못 찾으면(신제품·미래·롱테일 키워드) 자동완성으로 폴백
-                        #    (예: '아이폰18'은 검색광고 데이터가 아직 없어 빈 결과 → 자동완성엔 프로·출시일·가격 등 잘 나옴)
-                        if rel.get("error") or not rel.get("keywords"):
-                            ac = get_autocomplete_keywords(kw)
-                            ac_kws = [k for k in ac.get("keywords", []) if k.replace(" ", "") != seed_norm]
-                            if ac_kws:
-                                rel = {"error": None, "source": "자동완성",
-                                       "keywords": [{"키워드": k, "월간검색": None, "경쟁": ""} for k in ac_kws[:12]]}
-                        # ③ 씨앗과 상관없는 광고연관어(갤럭시·중고폰·요금제 등) 제거 (v6.34)
-                        #    filter_related_keywords(strict): 씨앗 포함어만(위치 무관), 관련도순. + 씨앗 자기 자신 제외.
-                        if rel.get("keywords"):
-                            filtered = [x for x in filter_related_keywords(kw, rel["keywords"], strict=True)
-                                        if x.get("키워드", "").replace(" ", "") != seed_norm]
-                            if filtered:
-                                rel = {**rel, "keywords": filtered[:12]}
-                        st.session_state["one_related"] = rel
-                rel = st.session_state["one_related"]
-                if rel.get("error") and not rel.get("keywords"):
-                    st.warning("연관 키워드를 찾지 못했어요. 키워드를 조금 바꿔서(띄어쓰기·다른 표현) 다시 검색해보세요.")
-                elif not rel.get("keywords"):
-                    st.caption("연관 키워드가 없어요.")
-                else:
-                    if rel.get("source") == "자동완성":
-                        st.caption("ℹ️ 이 키워드는 검색광고 데이터가 아직 적어 **자동완성 연관어**를 보여줘요. 검색량·판정은 각 줄 '이걸로 검색'을 누르면 나옵니다.")
-                    hc = st.columns([4, 2, 2, 2])
-                    hc[0].caption("키워드"); hc[1].caption("빠른 판정"); hc[2].caption("월간검색"); hc[3].caption("")
-                    for i, item in enumerate(rel["keywords"]):
-                        kwn = item.get("키워드", "")
-                        emo, lab = quick_reco(item.get("월간검색"), item.get("경쟁", ""))
-                        rc = st.columns([4, 2, 2, 2])
-                        rc[0].markdown(f"**{kwn}**")
-                        rc[1].markdown(f"{emo} {lab}" if lab else "·")
-                        rc[2].write(f"{item['월간검색']:,}" if item.get("월간검색") else "—")
-                        if rc[3].button("이걸로 파기", key=f"one_rel_{i}"):
-                            st.session_state["one_kw"] = kwn
-                            st.session_state["one_path"] = st.session_state.get("one_path", [kw]) + [kwn]  # 경로 한 단계 추가
-                            st.session_state["one_show_related"] = True   # 파고들면 그 키워드 연관어도 바로 펼침 → 한 클릭으로 더 깊이
-                            st.session_state["one_show_news"] = False
-                            st.session_state.pop("one_related", None)
-                            st.session_state.pop("one_news", None)
-                            res_, trend_ = one_search(kwn, keys)
-                            st.session_state["one_result"] = res_
-                            st.session_state["one_trend"] = trend_
-                            st.rerun()
-                    st.caption("각 줄 **이걸로 파기**를 누르면 그 키워드로 판정 + 연관어가 다시 펼쳐져요. 한 번 더 파고들수록 경쟁 약한 알짜가 잘 나옵니다.")
-
-        # ── ③ 정보 수집 (뉴스) ──
-        if st.session_state.get("one_show_news"):
-            with st.container(border=True):
-                st.markdown(f"#### 📰 '{kw}' 관련 뉴스·소재", unsafe_allow_html=True)
-                if "one_news" not in st.session_state:
-                    with st.spinner("뉴스 수집 중..."):
-                        nr = search_news(kw, keys, display=10, sort="date") if keys else {"error": "no-key", "news": []}
-                        if nr.get("error") or not nr.get("news"):
-                            nr = fetch_news_titles_free(kw, limit=10)  # 키 없거나 실패 시 무료 폴백
-                        st.session_state["one_news"] = nr
-                nr = st.session_state["one_news"]
-                if nr.get("error"):
-                    st.warning(nr["error"])
-                else:
-                    for n in nr["news"]:
-                        if n.get("link"):
-                            st.markdown(f"- [{n['title']}]({n['link']})")
-                        else:
-                            st.markdown(f"- {n['title']}")
-                    st.caption("💡 뉴스 시점 = 검색 급증 직전 골든타임. 마음에 드는 제목을 글감으로 쓰세요.")
-    else:
-        st.caption("↑ 키워드를 넣고 검색해보세요. 예) 아이폰, 아동수당, 제습기")
-
-    # ── ⭐ 담아둔 키워드 (발행 계획) ── (v6.38) — 검색 여부와 무관하게 하단에 항상
-    saved = st.session_state.get("one_saved", [])
-    if saved:
-        st.markdown("---")
-        st.markdown(f"#### ⭐ 담아둔 키워드 <span style='color:#9ca3af;font-size:.85rem;'>— {len(saved)}개 · 이번 주 발행 계획</span>", unsafe_allow_html=True)
-        df_saved = pd.DataFrame(saved)
-        st.dataframe(df_saved, hide_index=True, use_container_width=True)
-        cc1, cc2 = st.columns([1, 1])
-        csv_saved = df_saved.to_csv(index=False).encode("utf-8-sig")
-        cc1.download_button("📥 CSV로 내보내기", csv_saved,
-                            file_name=f"내키워드_{datetime.now().strftime('%Y%m%d')}.csv",
-                            mime="text/csv", use_container_width=True)
-        if cc2.button("🗑️ 목록 비우기", use_container_width=True):
-            st.session_state["one_saved"] = []
-            st.rerun()
-
-# ============ 탭: 트렌드 대시보드 (메인) ============
-if SELECTED_MENU == "🏠 홈 · 뭐 쓸지 둘러보기":
-    if not st.session_state.api_configured:
-        st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
-    else:
-        st.info("""🏠 카테고리별 **지금 뜨는 뉴스·이슈**를 보여줍니다. 카드에서 마음에 드는 이슈를 보면,  
-        그 키워드를 '🎯 키워드 검증'이나 '🪓 세부 글감 파기' 탭에 넣어 글감으로 발전시키세요.  
-　🟢 네이버 데이터 (검색 API · 뉴스)""")
-
-        if "news_cache" not in st.session_state:
-            st.session_state["news_cache"] = {}
-
-        cat_names = list(CATEGORY_NEWS_QUERIES.keys())
-        chosen = st.multiselect(
-            "볼 카테고리 선택 (2~3개 추천)",
-            cat_names,
-            default=cat_names[:1],
-            key="news_chosen",
-        )
-
-        if st.button("🔄 선택한 카테고리 뉴스 가져오기", type="primary", use_container_width=True, key="news_refresh"):
-            if not chosen:
-                st.warning("카테고리를 하나 이상 선택해주세요")
-            else:
-                prog = st.progress(0)
-                status = st.empty()
-                for i, cat in enumerate(chosen):
-                    status.text(f"뉴스 가져오는 중 ({i+1}/{len(chosen)}): {cat}")
-                    news = fetch_category_news(cat, st.session_state.api_keys, per_query=6)
-                    st.session_state["news_cache"][cat] = news
-                    prog.progress((i + 1) / len(chosen))
-                status.empty(); prog.empty()
-
-        # 선택한 카테고리: 한 줄에 2개씩, 각 카드 안에서 뉴스를 다시 2칸으로
-        if chosen:
-            def render_news_card(cat):
-                news = st.session_state["news_cache"].get(cat)
-                count = len(news) if news else 0
-                st.markdown(f"**{cat}**  ·  {count}건")
-                if news is None:
-                    st.caption("위 버튼을 누르면 이 분야 최신 뉴스가 표시됩니다")
-                elif not news:
-                    st.caption("가져온 뉴스가 없습니다")
-                else:
-                    show = news[:20]
-                    half = (len(show) + 1) // 2
-                    left, right = show[:half], show[half:]
-                    cL, cR = st.columns(2)
-                    for col, items, start in ((cL, left, 1), (cR, right, half + 1)):
-                        with col:
-                            for idx, n in enumerate(items, start=start):
-                                if n["link"]:
-                                    st.markdown(f"{idx}. [{n['title']}]({n['link']})")
-                                else:
-                                    st.write(f"{idx}. {n['title']}")
-                    st.caption("💡 쓸 이슈의 키워드를 '🎯 키워드 검증'·'🪓 세부 글감 파기'에")
-
-            for row_start in range(0, len(chosen), 2):
-                pair = chosen[row_start:row_start + 2]
-                cols = st.columns(2)
-                for ci, cat in enumerate(pair):
-                    with cols[ci]:
-                        with st.container(border=True):
-                            render_news_card(cat)
-
-# ============ 탭: 오늘의 소재 (정책 보도자료 RSS → 키워드 발굴) ============
-if SELECTED_MENU == "📰 오늘의 소재 · 보도자료":
-    st.subheader("📰 오늘의 소재 — 부처 보도자료에서 키워드 발굴")
-    st.info("""정책브리핑(korea.kr) **보도자료 목록(전 부처)**을 읽어 돈·행동·타겟 신호어로 거른 뒤,
-제목에서 뽑은 **후보 키워드의 검색량·문서수·비율까지 자동 조회**합니다.
-보도자료 시점 = 검색 급증 직전 + 경쟁 글 거의 0인 골든타임 · 보도자료 원문 링크는 글 쓸 때 팩트 출처로도 사용
-🟢 후보 키워드는 '🎯 키워드 검증' 탭에서 최종 합격 확인 후 쓰세요.""")
-
-    if not st.session_state.api_configured:
-        st.warning("👈 네이버 API 키가 없으면 수집·필터까지만 하고, 검색량 실측은 건너뜁니다")
-
-    col_r1, col_r2 = st.columns(2)
-    with col_r1:
-        # 보도자료 대부분은 행정 잡음이라 신호어에 걸리는 건 소수 — 넉넉히 가져온다
-        rss_pages = st.selectbox("가져올 목록 페이지 수 (페이지당 약 20건)", [3, 5, 10], index=1, key="rss_pages")
-    with col_r2:
-        rss_topn = st.selectbox("검색량까지 실측할 상위 소재 수", [5, 8, 12], index=1, key="rss_topn")
-
-    if st.button("📰 보도자료 수집·분석", type="primary", use_container_width=True, key="rss_btn"):
-        with st.spinner(f"정책브리핑 보도자료 수집 중 ({rss_pages}페이지)..."):
-            res = fetch_press_releases(pages=rss_pages)
-        for e in res["errors"]:
-            st.warning(f"⚠ {e}")
-        all_items = res["items"]
-
-        if not all_items:
-            st.error("수집된 보도자료가 없습니다 — korea.kr 페이지 구조가 바뀌었을 수 있어요 (fetch_press_releases 정규식 수정 필요)")
-        else:
-            st.caption(f"✅ 보도자료 {len(all_items)}건 수집 (전 부처, 최신순)")
-            scored = []
-            for it in all_items:
-                s, hits = score_press_item(it["title"], it.get("pubDate", ""))
-                # v6.24: 돈 또는 행동 신호가 있어야 통과 — 타겟(청년·자녀 등)만으로는 부족.
-                # ("청년 700명 파견"·"청년의 목소리" 같은 행정 홍보가 타겟+최근성만으로
-                #  상위를 점령하던 문제. 타겟은 가점 역할만.)
-                if s >= 2 and any(h in ("💰돈", "⚡행동") for h in hits):
-                    it2 = dict(it)
-                    it2["점수"] = s
-                    it2["신호"] = " ".join(hits)
-                    it2["후보"] = extract_candidate_keywords(it["title"])
-                    scored.append(it2)
-            scored.sort(key=lambda x: x["점수"], reverse=True)
-            st.session_state["rss_all"] = all_items   # 0건일 때 훑어보기 폴백용
-
-            # 상위 N건은 후보 키워드 실측 (광고 API + 블로그 문서수)
-            if st.session_state.api_configured and scored:
-                top = scored[:rss_topn]
-                prog2 = st.progress(0)
-                st2 = st.empty()
-                for i, it in enumerate(top):
-                    st2.text(f"후보 키워드 실측 중 ({i+1}/{len(top)}): {it['후보'][0] if it['후보'] else '-'}")
-                    checks = []
-                    for c in it["후보"]:
-                        checks.append(quick_kw_check(c, st.session_state.api_keys))
-                        time.sleep(0.15)
-                    it["실측"] = checks
-                    prog2.progress((i + 1) / len(top))
-                st2.empty(); prog2.empty()
-
-            st.session_state["rss_scored"] = scored
-            st.caption(f"신호어 필터 통과 {len(scored)}건 / 전체 수집 {len(all_items)}건")
-
-    # 결과 표시 (세션 유지 — 버튼 다시 안 눌러도 남아있음)
-    _rss_scored = st.session_state.get("rss_scored", [])
-    if _rss_scored:
-        _show_n = st.session_state.get("rss_topn", 8)
-        st.markdown(f"### 🏆 오늘의 소재 상위 {min(_show_n, len(_rss_scored))}건")
-        for it in _rss_scored[:_show_n]:
-            with st.container(border=True):
-                st.markdown(f"**[{it['title']}]({it['link']})**")
-                st.caption(f"{it['부처']} · {it.get('pubDate', '')[:16]} · 점수 {it['점수']} · {it['신호']}")
-                if it.get("실측"):
-                    for c in it["실측"]:
-                        vol, doc, ratio = c["월간검색"], c["문서수"], c["비율"]
-                        good = (vol or 0) >= 500 and (doc or 0) < 30000 and c["경쟁"] != "높음"
-                        emoji = "🟢" if good else "⚪"
-                        vol_s = f"{vol:,}" if isinstance(vol, int) else "?"
-                        doc_s = f"{doc:,}" if isinstance(doc, int) else "?"
-                        ratio_s = ratio if ratio is not None else "—"
-                        st.write(f"{emoji} **{c['키워드']}** — 월 {vol_s}회 · 문서 {doc_s}개 · 비율 {ratio_s} · 경쟁 {c['경쟁'] or '—'}")
-                elif it.get("후보"):
-                    st.write("후보 키워드: " + ", ".join(it["후보"]))
-
-        if len(_rss_scored) > _show_n:
-            with st.expander(f"필터 통과 나머지 {len(_rss_scored) - _show_n}건 보기"):
-                for it in _rss_scored[_show_n:]:
-                    cand = (" → 후보: " + ", ".join(it["후보"])) if it.get("후보") else ""
-                    st.markdown(f"- [{it['title']}]({it['link']}) ({it['부처']} · 점수 {it['점수']}){cand}")
-
-        st.info("🟢 후보를 '🎯 키워드 검증' 탭에 넣어 합격 확인 → blog_ai_writer로. "
-                "후보 추출은 기계라 어색할 수 있어요 — 제목을 보고 직접 다듬는 게 더 정확합니다.")
-    elif st.session_state.get("rss_all"):
-        # 수집은 됐는데 신호어 필터 통과 0건 — 흔한 날 (보도자료 대부분은 행정 잡음)
-        st.info("오늘은 돈·육아 신호어에 걸린 보도자료가 없어요. 아래 전체 제목을 훑어보거나, "
-                "🪓 세부 글감 파기의 씨앗 풀 / 🗓️ 소재캘린더로 진행하세요.")
-        with st.expander(f"수집한 보도자료 전체 제목 훑어보기 ({len(st.session_state['rss_all'])}건)"):
-            for it in st.session_state["rss_all"]:
-                st.markdown(f"- [{it['title']}]({it['link']}) ({it['부처']} · {it.get('pubDate', '')})")
-
-# ============ 탭1: 네이버 단일 ============
-if SELECTED_MENU == "🎯 키워드 검증 · 쓸까 말까":
-    if not st.session_state.api_configured:
-        st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
-    else:
-        st.info("🎯 **쓸 키워드를 이미 정했을 때** — 이 키워드로 글 쓰면 노출될지, 검색량·경쟁·문서수를 종합해 판정합니다.  \n　🟢 네이버 데이터 (검색 API + 검색광고 API)")
-
-        # v6.15: 블로그명 대신 '카테고리 + 단계' 공통 선택 + 선택값 저장(쿼리파라미터)
-        _cats = list(CATEGORY_NEWS_QUERIES.keys())
-        _saved_cat = st.query_params.get("cat", "")
-        _saved_stage = st.query_params.get("stage", "")
-        _bc1, _bc2 = st.columns([3, 2])
-        with _bc1:
-            # v6.26: 기본값을 IT(CAT-A, 맨 앞)에서 힌트 없는 안전 카테고리로 변경.
-            #   기존엔 드롭다운을 안 바꾸면 cat_hint_for가 IT 신호어를 시드에 몰래 주입 →
-            #   최저시급 등 비IT 키워드가 blog_ai_writer에서 CAT-A로 오분류됨.
-            #   IT 힌트는 CAT-A를 직접 고를 때만 나오게(IT 서브블로그용은 유지).
-            _default_cat = "CAT-C · 정보·생활정보·꿀팁"
-            _def_idx = _cats.index(_default_cat) if _default_cat in _cats else 0
-            cat_pick = st.selectbox(
-                "① 카테고리",
-                _cats,
-                index=(_cats.index(_saved_cat) if _saved_cat in _cats else _def_idx),
-                key="unified_cat",
-            )
-        with _bc2:
-            stage_pick = st.radio(
-                "② 블로그 단계",
-                STAGE_OPTIONS,
-                index=(STAGE_OPTIONS.index(_saved_stage) if _saved_stage in STAGE_OPTIONS else 0),
-                horizontal=True,
-                key="unified_stage",
-            )
-        st.query_params["cat"] = cat_pick
-        st.query_params["stage"] = stage_pick
-
-        keyword = st.text_input("③ 분석할 키워드", placeholder="예: 다이어트", key="single_kw")
-        
-        if st.button("🔍 분석 시작", type="primary", use_container_width=True, key="single_btn"):
-            if not keyword.strip():
-                st.error("키워드를 입력해주세요")
-            else:
-                with st.spinner(f"'{keyword}' 분석 중..."):
-                    result = analyze_keyword(keyword, st.session_state.api_keys)
-                
-                if result.get("error"):
-                    st.error(f"❌ {result['error']}")
-                else:
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("월간 검색량", f"{result['monthly_search']:,}")
-                    c2.metric("주간 검색량", f"{result['weekly_search']:,}")
-                    c3.metric("일간 검색량", f"{result['daily_search']:,}")
-                    c4.metric("노출 확률", f"{result['exposure_score']}점", f"{result['difficulty_emoji']} {result['difficulty']}")
-                    
-                    st.markdown("---")
-                    col_L, col_R = st.columns(2)
-                    with col_L:
-                        st.subheader("📊 검색량 상세")
-                        st.write(f"- **PC 월간**: {result['monthly_pc']:,}회")
-                        st.write(f"- **모바일 월간**: {result['monthly_mobile']:,}회")
-                        st.write(f"- **모바일 비율**: {result['mobile_ratio']*100:.1f}%")
-                        st.write(f"- **경쟁 강도**: {result['competition']}")
-                        st.subheader("📄 문서 수")
-                        st.write(f"- **블로그**: {result['blog_count']:,}개")
-                        st.write(f"- **카페**: {result['cafe_count']:,}개")
-                        st.write(f"- **웹문서**: {result['webkr_count']:,}개")
-                        st.subheader("🕒 최근성")
-                        st.write(f"- **최근 30일 내 글**: {result['recent_30d']}개")
-                        if result['avg_days'] is not None:
-                            st.write(f"- **상위 글 평균 경과일**: {result['avg_days']}일")
-                    with col_R:
-                        st.subheader("🎯 노출 확률 세부 점수")
-                        bdf = pd.DataFrame({
-                            "지표": list(result["score_breakdown"].keys()),
-                            "점수": list(result["score_breakdown"].values()),
-                            "가중치": ["40%", "25%", "20%", "15%"],
-                        })
-                        st.dataframe(bdf, hide_index=True, use_container_width=True)
-                        st.caption(f"종합: {result['exposure_score']}점 / 100점")
-                    
-                    if result.get("related_keywords"):
-                        st.markdown("---")
-                        st.subheader("🔗 연관 키워드 TOP 10")
-                        rdf = pd.DataFrame(result["related_keywords"])
-                        rdf["월간검색"] = rdf["월간검색"].apply(lambda x: f"{x:,}")
-                        st.dataframe(rdf, hide_index=True, use_container_width=True)
-
-                    # 세부 키워드도 함께 수집해 시드의 '검색의도 신호'로 쓴다 (v6.14)
-                    try:
-                        _sub = collect_sub_keywords(result["keyword"], st.session_state.api_keys, limit=12)
-                        result["sub_keywords"] = _sub.get("keywords", []) if not _sub.get("error") else []
-                    except Exception:
-                        result["sub_keywords"] = []
-                    # 분석 결과를 세션에 저장 (다리 블록이 재실행돼도 유지)
-                    st.session_state["last_result"] = result
-
-        # ===== 다리: blog_ai_writer 연결 =====
-        if st.session_state.get("last_result"):
-            lr = st.session_state["last_result"]
-            st.markdown("---")
-            st.subheader(f"🎯 이 키워드, '{cat_pick} · {stage_pick}'에 쓸까?")
-            verdict = judge_keyword(lr, stage_pick)
-            if verdict["grade"] == "합격":
-                st.success(f"{verdict['emoji']} **{verdict['grade']}** — 이 블로그에 쓰기 좋은 키워드예요")
-            elif verdict["grade"] == "보통":
-                st.warning(f"{verdict['emoji']} **{verdict['grade']}** — 써도 되지만 더 좋은 키워드가 있을 수 있어요")
-            else:
-                st.error(f"{verdict['emoji']} **{verdict['grade']}** — 이 블로그엔 추천하지 않아요 (더 구체적인 키워드로)")
-            for r in verdict["reasons"]:
-                st.write(f"- {r}")
-
-            # v6.18: 너무 넓은 키워드(불합격 + 검색량 큼) → 세부 글감 파기 추천
-            if verdict["grade"] == "불합격" and lr.get("monthly_search", 0) >= 30000:
-                suggest_tab(
-                    f"'{lr['keyword']}'는 검색량이 큰 넓은 키워드라 이대로는 이기기 어려워요 (월 {lr['monthly_search']:,}회)",
-                    "🪓 세부 글감 파기",
-                    "이 단어를 넣어 이길 수 있는 세부 키워드로 쪼개보세요",
-                )
-
-            st.markdown("---")
-            st.subheader("✍️ blog_ai_writer로 보내기")
-            st.caption(
-                f"'{lr['keyword']}' 분석 결과를 blog_ai_writer 자막칸에 붙일 텍스트로 만듭니다. "
-                "복사 → blog_ai_writer 자막칸에 붙여넣으면 키워드·카테고리·검색의도가 자동 설정됩니다."
-            )
-            seed_text = build_seed_text(lr, cat_hint_for(cat_pick), sub_keywords=lr.get("sub_keywords"))
-            st.text_area("📋 복사할 텍스트 (아래 내용을 자막칸에 붙여넣기)", seed_text, height=140)
-            st.caption("💡 blog_ai_writer에서 카테고리·의도가 다르게 잡히면 그 칸만 직접 바꾸면 됩니다.")
-
-# ============ 탭2: 네이버 일괄 ============
-if SELECTED_MENU == "📋 여러 개 한번에 검증":
-    if not st.session_state.api_configured:
-        st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
-    else:
-        st.info("📋 **후보 키워드가 여러 개일 때** — 한 줄에 하나씩 넣으면 한꺼번에 판정해 비교해줍니다.  \n　🟢 네이버 데이터 (검색 API + 검색광고 API)")
-        keywords_text = st.text_area("키워드들 (한 줄에 하나씩)", placeholder="다이어트\n홈트레이닝\n간헐적단식", height=150)
-        if st.button("🔍 일괄 분석", type="primary", use_container_width=True, key="bulk_btn"):
-            keywords = [k.strip() for k in keywords_text.split("\n") if k.strip()]
-            if not keywords:
-                st.error("키워드를 입력해주세요")
-            else:
-                progress = st.progress(0); status = st.empty()
-                results = []
-                for i, kw in enumerate(keywords):
-                    status.text(f"분석 중 ({i+1}/{len(keywords)}): {kw}")
-                    results.append(analyze_keyword(kw, st.session_state.api_keys))
-                    progress.progress((i + 1) / len(keywords))
-                    time.sleep(0.3)
-                status.empty(); progress.empty()
-                
-                df_data = []
-                for r in results:
-                    if r.get("error"):
-                        df_data.append({"키워드": r.get("keyword", "?"), "에러": r["error"]})
-                    else:
-                        df_data.append({
-                            "키워드": r["keyword"], "월간검색": r["monthly_search"],
-                            "주간검색": r["weekly_search"], "일간검색": r["daily_search"],
-                            "블로그수": r["blog_count"], "경쟁": r["competition"],
-                            "모바일%": f"{r['mobile_ratio']*100:.0f}%",
-                            "노출점수": r["exposure_score"],
-                            "난이도": f"{r['difficulty_emoji']} {r['difficulty']}",
-                        })
-                df = pd.DataFrame(df_data)
-                st.success(f"✅ {len(results)}개 분석 완료")
-                st.dataframe(df, hide_index=True, use_container_width=True)
-
-                # v6.18: 후보가 전부 넓은 키워드면 → 세부 글감 파기 추천
-                _ok = [r for r in results if not r.get("error")]
-                if _ok and all(r.get("monthly_search", 0) >= 30000 for r in _ok):
-                    suggest_tab(
-                        "넣은 키워드가 다 검색량 큰 넓은 단어예요 — 그대로는 경쟁이 세요",
-                        "🪓 세부 글감 파기",
-                        "각 단어를 거기에 넣어 세부 키워드로 쪼개면 이기기 쉬워져요",
-                    )
-                csv = df.to_csv(index=False).encode("utf-8-sig")
-                st.download_button("📥 CSV 다운로드", csv,
-                    file_name=f"keyword_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv", use_container_width=True)
-
-# ============ 탭3: 구글 트렌드 ============
-if SELECTED_MENU == "📈 구글 트렌드 비교":
-    st.info("💡 구글 트렌드는 API 키가 필요 없습니다. 최대 5개 키워드 비교 가능.  \n　🔵 구글 데이터 (Google Trends)")
-    
-    col_a, col_b, col_c = st.columns([2, 1, 1])
-    with col_a:
-        trend_keywords = st.text_input("키워드 (쉼표로 구분, 최대 5개)",
-                                       placeholder="예: 다이어트, 홈트레이닝, 간헐적단식", key="trend_kw")
-    with col_b:
-        timeframe_label = st.selectbox("기간",
-            ["지난 7일", "지난 1개월", "지난 3개월", "지난 12개월", "지난 5년"],
-            index=3, key="trend_tf")
-        timeframe_map = {
-            "지난 7일": "now 7-d", "지난 1개월": "today 1-m",
-            "지난 3개월": "today 3-m", "지난 12개월": "today 12-m",
-            "지난 5년": "today 5-y",
-        }
-    with col_c:
-        geo = st.selectbox("국가", ["한국", "전세계", "미국", "일본"], index=0, key="trend_geo")
-        geo_map = {"한국": "KR", "전세계": "", "미국": "US", "일본": "JP"}
-    
-    if st.button("📈 트렌드 분석", type="primary", use_container_width=True, key="trend_btn"):
-        kws = [k.strip() for k in trend_keywords.split(",") if k.strip()]
-        if not kws:
-            st.error("키워드를 입력해주세요")
-        elif len(kws) > 5:
-            st.error("최대 5개까지만 입력 가능합니다")
-        else:
-            # v6.18: 비교 탭인데 1개만 넣었으면 → 단일 분석은 키워드 검증 추천
-            if len(kws) == 1:
-                suggest_tab(
-                    "구글 트렌드는 '여러 키워드 비교'용이에요 — 1개만 넣으면 비교가 안 돼요",
-                    "🎯 키워드 검증 · 쓸까 말까",
-                    "이 키워드 1개의 노출 가능성을 보려면 거기서 분석하세요 (아래는 단일 추이만)",
-                )
-            with st.spinner(f"구글 트렌드 조회 중..."):
-                result = get_google_trends(kws, timeframe_map[timeframe_label], geo_map[geo])
-            
-            if result.get("error"):
-                st.error(f"❌ {result['error']}")
-                st.caption("⚠️ 구글이 일시적으로 차단했을 수 있어요. 1~2분 후 재시도")
-            else:
-                st.success(f"✅ '{', '.join(result['keywords'])}' 분석 완료")
-                
-                if "interest_over_time" in result:
-                    st.subheader("📈 시간별 관심도 (0~100)")
-                    st.line_chart(result["interest_over_time"], height=300)
-                    iot = result["interest_over_time"]
-                    summary_data = []
-                    for kw in result["keywords"]:
-                        if kw in iot.columns:
-                            summary_data.append({
-                                "키워드": kw, "평균": round(iot[kw].mean(), 1),
-                                "최댓값": int(iot[kw].max()), "최솟값": int(iot[kw].min()),
-                                "현재": int(iot[kw].iloc[-1]) if len(iot) > 0 else 0,
-                            })
-                    if summary_data:
-                        st.dataframe(pd.DataFrame(summary_data), hide_index=True, use_container_width=True)
-                
-                if "interest_by_region" in result:
-                    st.markdown("---")
-                    st.subheader("🌏 지역별 관심도 TOP 10")
-                    st.bar_chart(result["interest_by_region"], height=300)
-                
-                col_top, col_rise = st.columns(2)
-                with col_top:
-                    if "related_top" in result:
-                        st.subheader(f"🔝 '{result['keywords'][0]}' 인기 연관어")
-                        st.dataframe(result["related_top"], hide_index=True, use_container_width=True)
-                with col_rise:
-                    if "related_rising" in result:
-                        st.subheader(f"🚀 '{result['keywords'][0]}' 급상승 연관어")
-                        st.dataframe(result["related_rising"], hide_index=True, use_container_width=True)
-
-# ============ 탭5: 트렌드 발굴 (신규) ============
-if SELECTED_MENU == "🔥 글감 찾기 · 뭐가 뜨나":
-    if not st.session_state.api_configured:
-        st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
-    else:
-        st.info("""🔥 **뭘 쓸지 막막할 때** — 관심 분야 단어 하나를 씨앗으로 넣으면, **그 분야에서 요즘 뜨고 있는 연관 키워드**를 찾아드립니다.
-        (예: '부모급여' 넣으면 그 주변 뜨는 키워드가 나옴) 최근 3개월 트렌드를 분석해 상승률 높은 순으로 보여줘요. (데이터랩 권한 필요)  
-　🟢 네이버 데이터 (검색광고 API + 데이터랩)""")
-
-        col_a, col_b = st.columns([3, 1])
-        with col_a:
-            seed_kw = st.text_input("관심 분야 키워드", placeholder="예: 다이어트", key="trend_seed")
-        with col_b:
-            analyze_count = st.selectbox("분석 개수", [10, 15, 20], index=0, key="trend_count",
-                                         help="많을수록 정확하지만 느려집니다")
-
-        st.caption("⚠️ 연관 키워드마다 데이터랩을 조회하므로, 10개 기준 약 20~40초 걸립니다.")
-
-        only_related = st.checkbox(
-            "🔲 씨앗 관련 키워드만 보기 (체크 해제 시 전체를 관련도 순으로 표시)",
-            value=True, key="trend_only_related",
-            help="체크: 씨앗 단어를 포함한 연관어만 남깁니다 (세탁기 같은 잡음 제거). 해제: 다 보여주되 관련 높은 순으로 정렬합니다.",
-        )
-
-        if st.button("🔥 트렌드 발굴 시작", type="primary", use_container_width=True, key="trend_dig_btn"):
-            if not seed_kw.strip():
-                st.error("키워드를 입력해주세요")
-            else:
-                # 1) 연관 키워드 수집
-                with st.spinner("연관 키워드 수집 중..."):
-                    rel_result = get_related_keywords_list(seed_kw, st.session_state.api_keys, limit=analyze_count)
-
-                if rel_result.get("error"):
-                    st.error(f"❌ {rel_result['error']}")
-                else:
-                    keywords = rel_result["keywords"]
-                    # 씨앗 관련도 필터 적용 (체크 시 엄격, 해제 시 관련도 순 정렬)
-                    keywords = filter_related_keywords(seed_kw, keywords, strict=only_related)
-                    if only_related:
-                        st.caption(f"연관 키워드 {len(keywords)}개 (씨앗 '{seed_kw}' 관련만). 트렌드 분석 시작...")
-                    else:
-                        st.caption(f"연관 키워드 {len(keywords)}개 (관련도 순). 트렌드 분석 시작...")
-
-                    # v6.18: 연관어가 씨앗 1개뿐이면(좁은 단어) → 세부 글감 파기 추천
-                    if len(keywords) <= 1:
-                        suggest_tab(
-                            f"'{seed_kw}'는 연관 키워드가 거의 없는 좁은 단어예요 (검색광고 데이터가 얇음)",
-                            "🪓 세부 글감 파기",
-                            "이 단어를 넣으면 자동완성으로 세부 키워드(요금·사고·후기 등)가 나와요",
-                        )
-
-                    # 2) 각 키워드의 트렌드 방향 분석
-                    progress = st.progress(0)
-                    status = st.empty()
-                    trend_data = []
-
-                    for i, kw_info in enumerate(keywords):
-                        kw = kw_info["키워드"]
-                        status.text(f"트렌드 분석 중 ({i+1}/{len(keywords)}): {kw}")
-                        direction = get_trend_direction(kw, st.session_state.api_keys)
-                        if direction:
-                            trend_data.append({
-                                "키워드": kw,
-                                "월간검색": kw_info["월간검색"],
-                                "경쟁": kw_info["경쟁"],
-                                "관련": kw_info.get("관련", ""),
-                                "트렌드변화": direction["change_pct"],
-                                "최근관심도": direction["recent_avg"],
-                            })
-                        progress.progress((i + 1) / len(keywords))
-                        time.sleep(0.3)
-
-                    status.empty()
-                    progress.empty()
-
-                    if not trend_data:
-                        st.warning("트렌드 데이터를 가져오지 못했습니다. 데이터랩 권한을 확인해주세요.")
-                    else:
-                        # 상승률 순 정렬
-                        trend_data.sort(key=lambda x: x["트렌드변화"], reverse=True)
-
-                        st.success(f"✅ '{seed_kw}' 분야 트렌드 분석 완료")
-
-                        # 상승/하락 분류
-                        rising = [t for t in trend_data if t["트렌드변화"] > 5]
-                        falling = [t for t in trend_data if t["트렌드변화"] < -5]
-
-                        col_r, col_f = st.columns(2)
-                        with col_r:
-                            st.subheader("🔥 뜨는 키워드")
-                            if rising:
-                                for t in rising[:10]:
-                                    st.markdown(
-                                        f"**{t['키워드']}** &nbsp; "
-                                        f"📈 +{t['트렌드변화']}% &nbsp; "
-                                        f"(월 {t['월간검색']:,}회, 경쟁:{t['경쟁']})"
-                                    )
-                            else:
-                                st.caption("뚜렷하게 상승 중인 키워드가 없습니다")
-
-                        with col_f:
-                            st.subheader("❄️ 식는 키워드")
-                            if falling:
-                                for t in falling[:10]:
-                                    st.markdown(
-                                        f"**{t['키워드']}** &nbsp; "
-                                        f"📉 {t['트렌드변화']}% &nbsp; "
-                                        f"(월 {t['월간검색']:,}회)"
-                                    )
-                            else:
-                                st.caption("뚜렷하게 하락 중인 키워드가 없습니다")
-
-                        # 전체 테이블
-                        st.markdown("---")
-                        st.subheader("📋 전체 결과 (상승률 순)")
-                        df = pd.DataFrame(trend_data)
-                        df_display = df.copy()
-                        df_display["월간검색"] = df_display["월간검색"].apply(lambda x: f"{x:,}")
-                        df_display["트렌드변화"] = df_display["트렌드변화"].apply(
-                            lambda x: f"📈 +{x}%" if x > 5 else (f"📉 {x}%" if x < -5 else f"➡️ {x}%")
-                        )
-                        df_display = df_display.rename(columns={"트렌드변화": "트렌드"})
-                        # 보기 좋은 순서로 정렬 (관련 열이 있으면 포함)
-                        col_order = [c for c in ["키워드", "관련", "월간검색", "경쟁", "트렌드", "최근관심도"] if c in df_display.columns]
-                        df_display = df_display[col_order]
-                        st.dataframe(df_display, hide_index=True, use_container_width=True)
-
-                        # CSV 다운로드
-                        csv = df.to_csv(index=False).encode("utf-8-sig")
-                        st.download_button(
-                            "📥 CSV 다운로드", csv,
-                            file_name=f"trend_discovery_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                            mime="text/csv", use_container_width=True,
-                        )
-
-                        st.caption("💡 '뜨는 키워드'를 '🎯 키워드 검증' 탭에서 자세히 분석하면 블로그 주제로 딱!")
-
-# ============ 탭6: 세부 키워드 발굴 ============
-# v6.21: 두딸파파 씨앗 풀 — "뭘 넣지?" 결정 피로 제거용 내장 씨앗.
-# 위에서부터 순서대로 돌려 쓰면 됨(고민 금지). 소진되면 🤖 AI 키워드 탭에서 리필.
-# v6.25: 정체성 확장(자녀 중심 32 → 가정·자녀 경제 55) — 연말정산·청약·청년/신혼 지원·
-#        건강보험·연금 카테고리 추가. 투자·투기(주식·코인·ETF·펀드)는 전면 제외,
-#        세액공제·제도·절약 앵글만. (네이버 초유딩파파용 = 가족 앵글 있는 돈)
-SEED_POOL = [
-    "(직접 입력)",
-    # ── 정책·수당 ──
-    "아동수당", "부모급여", "자녀장려금", "근로장려금", "첫만남이용권", "국민행복카드",
-    "양육수당", "교육급여", "아이돌봄서비스", "육아휴직급여", "배우자 출산휴가",
-    # ── 출산·양육 신제도 ──
-    "신생아 특례대출", "육아기 근로시간 단축급여", "6+6 부모육아휴직제",
-    # ── 다자녀 ──
-    "다자녀 혜택", "다자녀 국가장학금", "다자녀 자동차 감면", "다자녀 전기요금", "다자녀 KTX",
-    # ── 교육·학교 ──
-    "초등 입학준비금", "늘봄학교", "방과후학교", "초등 돌봄교실", "유아학비", "교육비 세액공제",
-    # ── 연말정산·세금 ──
-    "연말정산 자녀공제", "자녀 세액공제", "연말정산 인적공제", "의료비 세액공제",
-    "월세 세액공제", "신용카드 소득공제", "산후조리원 세액공제",
-    # ── 청약·주거 ──
-    "자녀 청약통장", "청년 주택드림 청약통장", "신혼부부 특별공급", "생애최초 특별공급",
-    "신혼부부 전세자금대출", "신생아 특례 디딤돌대출",
-    # ── 청년·신혼 지원 ──
-    "청년도약계좌", "청년월세 특별지원",
-    # ── 건강보험·의료 ──
-    "건강보험 피부양자", "건강보험료 환급", "본인부담상한제", "영유아 건강검진",
-    "어린이 독감 예방접종", "아이 병원비 지원",
-    # ── 연금·목돈 (세액공제·제도 앵글만, 투자·종목 제외) ──
-    "국민연금 임의가입", "연금저축 세액공제", "노란우산공제", "IRP 세액공제",
-    # ── 자녀 자산 ──
-    "어린이 통장", "미성년 자녀 증여", "어린이 실비보험",
-    # ── 생활 ──
-    "지역화폐", "초등 준비물",
-]
-
-if SELECTED_MENU == "🪓 세부 글감 파기":
-    if not st.session_state.api_configured:
-        st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
-    else:
-        st.info("""🪓 **큰 키워드를 글감으로 쪼갤 때** — 넓은 키워드(예: 갤럭시S26)를 넣으면, **그 뒤에 붙는 세부 키워드**(사전예약·출시일·케이스 등)를 찾아  
-        각각 합격 판정까지 해줍니다. 넓은 키워드는 입구로만 쓰고, 합격한 세부 키워드로 글을 쓰세요.  
-　🟢 네이버 실제 검색 데이터로 찾아요""")
-
-        # v6.21: 씨앗 풀 — 고르면 아래 직접 입력 없이 바로 사용
-        seed_pick = st.selectbox(
-            "🌱 두딸파파 씨앗 풀 (고르면 타이핑 없이 바로 파기 — 위에서부터 순서대로 돌려 쓰세요)",
-            SEED_POOL, index=0, key="seed_pick",
-            help="'뭘 넣지' 고민 제거용 내장 씨앗 55개(수당·세금·청약·청년신혼·건강보험·연금·다자녀·교육). 직접 입력하려면 (직접 입력) 그대로 두세요.",
-        )
-
-        col_s1, col_s2 = st.columns([3, 1])
-        with col_s1:
-            sub_seed = st.text_input("넓은 키워드 (씨앗)", placeholder="예: 갤럭시S26", key="sub_seed")
-        with col_s2:
-            sub_stage = st.selectbox("블로그 상태", list(VERDICT_RULES.keys()), key="sub_stage")
-
-        if seed_pick != "(직접 입력)":
-            sub_seed = seed_pick
-            st.caption(f"🌱 씨앗 풀에서 선택됨: **{seed_pick}** (직접 입력값은 무시)")
-
-        # v6.30: 처음 보는 사람도 바로 고르게 — '어떤 걸 찾을지'를 예시로 크게 보여줌
-        st.markdown("#### 어떤 연관어를 찾을까요?")
-        SCOPE_NARROW = "🔹 내 키워드 뒤에 붙는 말만  (예: 구강검진 → 구강검진 비용 · 구강검진 시기)"
-        SCOPE_WIDE   = "🔸 내 키워드가 중간·뒤에 든 것도  (예: 구강검진 → 찾아가는 AI구강검진 같은 것까지)"
-        sub_scope = st.radio(
-            "어떤 연관어를 찾을까요?",
-            [SCOPE_NARROW, SCOPE_WIDE],
-            index=0, key="sub_scope", label_visibility="collapsed",
-            captions=[
-                "빠르고, 내 키워드로 시작하는 세부 글감 찾기에 좋아요.",
-                "조금 느리지만, 내 키워드가 앞·중간에 숨은 키워드까지 넓게 찾아줘요.",
-            ],
-        )
-        sub_wide = (sub_scope == SCOPE_WIDE)   # 기존 prefer_related 값으로 연결
-
-        sub_limit = st.selectbox(
-            "몇 개까지 찾을까요?", [20, 50, 100], index=0, key="sub_limit",
-            help="많이 찾을수록 후보는 늘지만 분석이 느려져요. 50·100개는 아래 '⚡ 2단계'와 함께 쓰길 권해요.",
-        )
-        sub_two_step = st.checkbox(
-            "⚡ 2단계로 빠르게 (먼저 수집만 → 고른 것만 정밀 분석)",
-            value=False, key="sub_two_step",
-            help="체크: 검색량만 빠르게 보고 직접 고른 키워드만 합격판정(빠름). 해제: 전체 자동 합격판정(느림).",
-        )
-
-        if st.button("🪓 세부 키워드 발굴", type="primary", use_container_width=True, key="sub_dig_btn"):
-            if not sub_seed.strip():
-                st.error("키워드를 입력해주세요")
-            else:
-                with st.spinner("세부 키워드 수집 중..."):
-                    sub_res = collect_sub_keywords(sub_seed, st.session_state.api_keys, limit=sub_limit, prefer_related=sub_wide)
-
-                if sub_res.get("error"):
-                    st.error(f"❌ {sub_res['error']}")
-                else:
-                    st.session_state["sub_keywords"] = sub_res["keywords"]
-                    st.session_state["sub_source"] = sub_res["source"]
-                    st.caption(f"수집 완료 ({sub_res['source']}): 세부 키워드 {len(sub_res['keywords'])}개")
-
-                    # v6.18: 자동완성이 안 나오면(너무 좁거나 오타) → 키워드 검증 추천
-                    if not sub_res["keywords"]:
-                        suggest_tab(
-                            f"'{sub_seed}'는 연관 세부 키워드가 안 나와요 (너무 좁거나 오타일 수 있어요)",
-                            "🎯 키워드 검증 · 쓸까 말까",
-                            "이 단어 자체를 직접 검증하거나, 한 단계 넓은 씨앗으로 바꿔보세요",
-                        )
-
-                    if not sub_two_step:
-                        # 전체 자동 분석 + 합격 판정
-                        kws = sub_res["keywords"]
-                        if len(kws) > 40:
-                            st.caption("⏳ 개수가 많아 전체 자동 분석은 시간이 걸려요. 다음엔 ⚡2단계로 골라 분석하면 빨라요.")
-                        progress = st.progress(0)
-                        status = st.empty()
-                        rows = []
-                        for i, kw in enumerate(kws):
-                            status.text(f"분석 중 ({i+1}/{len(kws)}): {kw}")
-                            r = analyze_keyword(kw, st.session_state.api_keys)
-                            if not r.get("error"):
-                                v = judge_keyword(r, sub_stage)
-                                rows.append({
-                                    "키워드": kw,
-                                    "판정": f"{v['emoji']} {v['grade']}",
-                                    "_점수": v["points"],
-                                    "월간검색": r["monthly_search"],
-                                    "경쟁글": r["blog_count"],
-                                    "비율": (round(r["blog_count"] / r["monthly_search"], 1) if r["monthly_search"] else None),
-                                    "경쟁강도": r["competition"],
-                                    "노출점수": r["exposure_score"],
-                                })
-                            progress.progress((i + 1) / len(kws))
-                            time.sleep(0.2)
-                        status.empty(); progress.empty()
-                        st.session_state["sub_rows"] = rows
-
-        # 결과 표시 (전체 분석 결과)
-        if st.session_state.get("sub_rows"):
-            rows = st.session_state["sub_rows"]
-            rows_sorted = sorted(rows, key=lambda x: x["_점수"], reverse=True)
-            pass_n = sum(1 for r in rows if "🟢" in r["판정"])  # v6.17: '불합격'에도 '합격'이 들어가 오집계되던 버그 수정(🟢만 카운트)
-            st.success(f"✅ 분석 완료 — 합격 {pass_n}개 / 전체 {len(rows)}개")
-
-            # v6.18: 🟢 합격이 0개면 씨앗이 너무 넓거나 경쟁이 센 분야 — 씨앗 조정 안내
-            if pass_n == 0 and rows:
-                st.warning(
-                    "💡 **🟢 합격이 하나도 없어요** — 씨앗이 너무 넓거나(예: '경제' → 신문사 이름만 나옴) "
-                    "경쟁이 센 분야예요. 씨앗을 **더 구체적으로** 바꾸거나(경제→전기요금·연말정산), "
-                    "🟡 보통 중 검색량이 받쳐주는 걸 골라 글을 써보세요."
-                )
-
-            df = pd.DataFrame(rows_sorted)
-            df_show = df.drop(columns=["_점수"]).copy()
-            df_show["월간검색"] = df_show["월간검색"].apply(lambda x: f"{x:,}")
-            df_show["경쟁글"] = df_show["경쟁글"].apply(lambda x: f"{x:,}")
-            st.dataframe(df_show, hide_index=True, use_container_width=True)
-            st.caption("📊 비율 = 문서수(경쟁글) ÷ 월간검색 — **낮을수록 경쟁 대비 수요가 좋아 노리기 쉬워요**(muhankey '비율'과 같은 개념).")
-
-            csv = df.drop(columns=["_점수"]).to_csv(index=False).encode("utf-8-sig")
-            st.download_button(
-                "📥 합격 목록 CSV 다운로드 (주간 글감)", csv,
-                file_name=f"sub_keywords_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv", use_container_width=True,
-            )
-            st.caption("💡 합격한 키워드를 '🎯 키워드 검증' 탭에 넣으면 blog_ai_writer로 바로 보낼 수 있어요.")
-
-        # 2단계 모드: 수집된 키워드에서 직접 고르기
-        elif st.session_state.get("sub_keywords") and st.session_state.get("sub_two_step"):
-            st.markdown("---")
-            st.subheader("⚡ 정밀 분석할 키워드 고르기")
-            picked = st.multiselect(
-                "합격 판정할 키워드를 고르세요 (적게 고를수록 빠름)",
-                st.session_state["sub_keywords"],
-                key="sub_picked",
-            )
-            if st.button("선택한 키워드 정밀 분석", key="sub_analyze_picked"):
-                rows = []
-                progress = st.progress(0)
-                for i, kw in enumerate(picked):
-                    r = analyze_keyword(kw, st.session_state.api_keys)
-                    if not r.get("error"):
-                        v = judge_keyword(r, st.session_state["sub_stage"])
-                        rows.append({
-                            "키워드": kw, "판정": f"{v['emoji']} {v['grade']}", "_점수": v["points"],
-                            "월간검색": r["monthly_search"], "경쟁글": r["blog_count"],
-                            "비율": (round(r["blog_count"] / r["monthly_search"], 1) if r["monthly_search"] else None),
-                            "경쟁강도": r["competition"], "노출점수": r["exposure_score"],
-                        })
-                    progress.progress((i + 1) / max(1, len(picked)))
-                    time.sleep(0.2)
-                progress.empty()
-                st.session_state["sub_rows"] = rows
-                st.rerun()
-
-# ============ 탭: 🗓️ 이번 달 글감 (v6.39 · D-1007-3) ============
+# ============ 이번 달 글감 데이터 (v6.39 · D-1007-3 — v7.0부터 검색창 아래 버튼) ============
 # 사장님 "키워드가 어렵다 — 무엇을 쓸지 떠올리는 게 막힌다" → 글감 샘 3개(달력·이어쓰기·오늘 내 살림) 중
 # 달력과 이어쓰기를 화면으로. 글감은 '주제 씨앗'일 뿐 — 판정은 실측(검색량·문서수·비율)으로.
 MONTHLY_TOPICS = {
@@ -2443,84 +1481,727 @@ def _kst_month():
     return (datetime.utcnow() + timedelta(hours=9)).month
 
 
-def _jump_to_one(kw):
-    """글감 → '🔍 한 번에 보기'로 바로 이동해 판정까지 (버튼 on_click 콜백 — 위젯 그리기 전에 실행)."""
-    st.session_state["nav_menu"] = "🔍 한 번에 보기"
-    st.session_state["one_kw"] = kw
-    st.session_state["one_path"] = [kw]
-    st.session_state["one_show_related"] = True
-    st.session_state["one_show_news"] = False
-    st.session_state.pop("one_related", None)
-    st.session_state.pop("one_news", None)
-    keys_, _ = get_active_keys()
-    if keys_:
-        res_, trend_ = one_search(kw, keys_)
-        st.session_state["one_result"] = res_
-        st.session_state["one_trend"] = trend_
-    else:
-        st.session_state["one_result"] = None
-        st.session_state["one_trend"] = None
+# ============ v7.0 화면: 🔍 키워드 찾기 (A안 · 한 화면, D-1014-8) ============
+# 사장님 "너무 복잡하고 조잡해 — 사용자 친화적으로" → 메뉴 9개를 한 화면으로.
+# 흐름: 키워드 하나 → 세부·롱테일 키워드 판정 표 → 쓸 것 체크 → 생성기로(첫째 = 메인, 나머지 = 서브).
+# 옛 '한 번에 보기·세부 글감 파기·키워드 검증·이번 달 글감'이 여기 하나로 합쳐짐. 나머지는 맨 아래 '다른 데서 글감 찾기'.
+GRADE_LABEL = {"합격": "🟢 추천", "보통": "🟡 보통", "불합격": "🔴 비추천"}
+GRADE_RANK = {"합격": 2, "보통": 1, "불합격": 0}
 
 
-if SELECTED_MENU == "🗓️ 이번 달 글감":
-    keys, key_src = get_active_keys()
-    st.markdown('<div class="main-header">🗓️ 이번 달 글감</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">뭘 쓸지 막막할 때 — 이번 달 사람들이 하는 살림에서 고르고, 숫자로 확인하세요.</div>', unsafe_allow_html=True)
+def _start_search(kw, keep_path=False):
+    """검색 시작 (버튼 on_click 콜백 — 위젯 그리기 전에 실행). keep_path=True면 파고들기 경로에 한 단계 추가."""
+    kw = (kw or "").strip()
+    if not kw:
+        return
+    st.session_state["main_kw_input"] = kw
+    st.session_state["main_pending"] = kw
+    path = st.session_state.get("main_path", []) if keep_path else []
+    st.session_state["main_path"] = path + [kw]
+    st.session_state["main_limit"] = 25
 
-    st.info("**고르는 기준 3가지** — ① 내가 사진 찍고 직접 해 볼 수 있나 ② 판정이 🟢인가 ③ 네이버에 검색했을 때 위에 일반 블로그가 보이나. 셋 다 예면 쓰세요.")
 
-    # ── ① 달력 글감 ──
-    cur_m = _kst_month()
-    m = st.selectbox("월", list(range(1, 13)), index=cur_m - 1, format_func=lambda x: f"{x}월" + (" (이번 달)" if x == cur_m else ""))
-    topics = MONTHLY_TOPICS[m]
-    cols = st.columns(3)
-    for i, (cat, items) in enumerate(topics.items()):
-        with cols[i % 3]:
-            with st.container(border=True):
-                st.markdown(f"**{cat}**")
-                for j, t in enumerate(items):
-                    st.button(f"🔍 {t}", key=f"mt_{m}_{cat}_{j}", on_click=_jump_to_one, args=(t,), use_container_width=True)
+def _more_search(seed):
+    """'더 많이 찾기' (콜백) — 같은 키워드를 60개까지 다시."""
+    st.session_state["main_kw_input"] = seed
+    st.session_state["main_pending"] = seed
+    st.session_state["main_limit"] = 60
 
-    all_topics = [t for items in topics.values() for t in items]
-    if st.button(f"📊 {m}월 글감 {len(all_topics)}개 한꺼번에 판정", type="primary", disabled=keys is None):
-        rows = []
-        prog = st.progress(0)
-        for k_i, t in enumerate(all_topics):
-            q = quick_kw_check(t, keys)
-            v = judge_keyword({"monthly_search": q.get("월간검색") or 0, "blog_count": q.get("문서수") or 0,
-                               "competition": q.get("경쟁", ""), "avg_days": None}, "신규")
-            rows.append({"판정": f"{v['emoji']} {v['grade']}", "글감": t, "월간검색": q.get("월간검색"),
-                         "문서수": q.get("문서수"), "비율": q.get("비율"), "_점수": v["points"]})
-            prog.progress((k_i + 1) / len(all_topics))
-            time.sleep(0.1)
+
+_jump_to_one = _start_search   # 옛 이름 — 남은 화면의 '🔍 글감' 버튼이 이 이름으로 부른다
+
+
+def _analyze_retry(kw, keys):
+    """판정 1개. 동시에 여러 개를 부르다 API가 잠깐 거절하면 1초 쉬고 한 번 더."""
+    r = analyze_keyword(kw, keys)
+    if r.get("error") and ("429" in r["error"] or "API 오류" in r["error"]):
+        time.sleep(1.0)
+        r = analyze_keyword(kw, keys)
+    return r
+
+
+def run_main_search(seed, keys, stage, limit):
+    """씨앗 → 세부 키워드 수집(자동완성 자음 확장 + 대비) → 판정 → 표 행."""
+    sub = collect_sub_keywords(seed, keys, limit=limit)
+    words, seen = [seed], {seed.replace(" ", "")}
+    for w in (sub.get("keywords") or []):
+        if w.replace(" ", "") not in seen:
+            seen.add(w.replace(" ", ""))
+            words.append(w)
+    results = {}
+    if keys:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        prog = st.progress(0.0, text=f"'{seed}' 세부 키워드 {len(words)}개 판정 중…")
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            futs = {ex.submit(_analyze_retry, w, keys): w for w in words}
+            for i, f in enumerate(as_completed(futs)):
+                w = futs[f]
+                try:
+                    results[w] = f.result()
+                except Exception as e:
+                    results[w] = {"keyword": w, "error": str(e)[:80]}
+                prog.progress((i + 1) / len(words), text=f"판정 중 ({i + 1}/{len(words)}) {w}")
         prog.empty()
-        st.session_state["mt_rows"] = (m, rows)
-    if keys is None:
-        st.caption("🔑 한꺼번에 판정은 네이버 API 키가 있어야 돼요. 글감 버튼은 키 없이도 눌러 볼 수 있어요.")
-    if st.session_state.get("mt_rows") and st.session_state["mt_rows"][0] == m:
-        df_mt = pd.DataFrame(st.session_state["mt_rows"][1]).sort_values("_점수", ascending=False).drop(columns=["_점수"])
-        st.dataframe(df_mt, use_container_width=True, hide_index=True)
-        st.caption("🟢부터 보세요. 마음에 드는 글감은 위 버튼을 누르면 '한 번에 보기'에서 세부 키워드까지 파고들 수 있어요.")
+    rows = []
+    for w in words:
+        r = results.get(w)
+        row = {"선택": False, "판정": "—", "키워드": w, "월 검색": None, "경쟁 글": None, "비율": None, "_순서": -999}
+        if r and not r.get("error"):
+            v = judge_keyword(r, stage)
+            s = r.get("monthly_search") or 0
+            row.update({"판정": GRADE_LABEL[v["grade"]], "월 검색": s, "경쟁 글": r.get("blog_count"),
+                        "비율": round(r["blog_count"] / s, 1) if s else None,
+                        "_순서": GRADE_RANK[v["grade"]] * 100 + v["points"]})
+        elif r:
+            row["판정"] = "⚪ 자료 없음"
+            row["_순서"] = -500
+        rows.append(row)
+    if keys:
+        rows.sort(key=lambda x: x["_순서"], reverse=True)
+    return {"seed": seed, "rows": rows, "results": results, "source": sub.get("source"), "error": sub.get("error")}
 
-    # ── ② 이어 쓰기 ──
-    st.markdown("---")
-    st.markdown("#### ✍️ 이어 쓰기 — 지난 글의 다음 질문")
-    st.caption("이미 쓴 글 주제를 넣으면, 그 글을 읽은 사람이 다음에 궁금해할 검색어를 보여줘요.")
-    prev = st.text_input("지난 글 주제", placeholder="예: 화장실 환기", key="mt_prev")
-    if prev.strip():
-        ac = get_autocomplete_keywords(prev.strip())
-        cand = [w for w in ac.get("keywords", []) if w != prev.strip()][:10]
-        if not cand:
-            cand = [f"{prev.strip()} {h}" for h in FOLLOWUP_HINTS]
-        pc = st.columns(2)
-        for i, w in enumerate(cand):
-            pc[i % 2].button(f"🔍 {w}", key=f"mt_prev_{i}", on_click=_jump_to_one, args=(w,), use_container_width=True)
 
-    # ── ③ 오늘 내 살림 ──
-    st.markdown("---")
-    st.markdown("#### 📝 오늘 내 살림")
-    st.caption("오늘 귀찮았던 일·안 됐던 일 한 줄이 그대로 글감이에요. 사진도 바로 찍을 수 있어 경험 글이 되고, AI 티도 줄어요. 떠오르면 위 '이어 쓰기' 칸에 넣어 검색어로 바꿔 보세요.")
+def render_detail(kw, res, keys, stage):
+    """'키워드 하나 자세히' — 왜 이 판정인지 · 상위 글 · 검색 추이 · 뉴스 · 더 파기."""
+    if res is None and keys:
+        res = _analyze_retry(kw, keys)
+    if res and not res.get("error"):
+        v = judge_keyword(res, stage)
+        search = res.get("monthly_search", 0) or 0
+        ratio = round(res["blog_count"] / search, 1) if search else None
+        st.markdown(f"**{kw}** &nbsp; {GRADE_LABEL[v['grade']]}")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("월 검색", f"{search:,}")
+        m1.caption(f"PC {res.get('monthly_pc', 0):,} · 모바일 {res.get('monthly_mobile', 0):,}")
+        m2.metric("경쟁 글", f"{res.get('blog_count', 0):,}")
+        m3.metric("비율", ratio if ratio is not None else "—")
+        m3.caption("경쟁 글 ÷ 월 검색 · 낮을수록 좋아요")
+        m4.metric("상위 글 평균", f"{res['avg_days']}일 전" if res.get("avg_days") is not None else "—")
+        m4.caption(f"최근 30일 글 {res.get('recent_30d', 0)}개")
+        st.info(one_action_tip(res, v["grade"]))
+        st.markdown("**왜 이 판정인가요?**")
+        for rsn in v["reasons"]:
+            st.markdown("- " + rsn)
+        tops = res.get("top_posts") or []
+        if tops:
+            st.markdown("**지금 상위에 뜬 글** — 내가 이겨야 할 글")
+            for p in tops:
+                meta = " · ".join([x for x in [p.get("blogger", ""), p.get("postdate", "")] if x])
+                head = f"[{p.get('title', '')}]({p['link']})" if p.get("link") else p.get("title", "")
+                st.markdown(f"- {head} <span style='color:#9ca3af;font-size:.8rem;'>{meta}</span>", unsafe_allow_html=True)
+            st.caption("상위 글이 오래됐거나 작은 블로그면 비집을 틈이 있어요. 네이버에서 직접 검색해 언론·지식인이 위를 차지했는지도 보세요.")
+    elif res and res.get("error"):
+        st.warning(f"판정 자료가 없어요 ({res['error']}). 검색량이 아주 적거나 너무 긴 키워드일 수 있어요.")
+    elif not keys:
+        st.caption("🔑 판정은 네이버 API 키가 있어야 나와요.")
+
+    b1, b2, b3 = st.columns(3)
+    b1.button("🪓 이 키워드로 더 파기", key=f"dt_dig_{kw}", on_click=_start_search, args=(kw, True), use_container_width=True)
+    show_trend = b2.button("📈 검색 추이", key=f"dt_tr_{kw}", use_container_width=True, disabled=keys is None)
+    show_news = b3.button("📰 관련 뉴스", key=f"dt_nw_{kw}", use_container_width=True)
+    if show_trend:
+        with st.spinner("데이터랩 추이 보는 중…"):
+            tr = get_trend_direction(kw, keys)
+        if tr:
+            st.caption(f"{tr['arrow']} 최근 3개월: **{tr['word']}** ({tr['change_pct']:+.0f}%) — 상승세면 지금이 쓸 타이밍")
+            if tr.get("series") and len(tr["series"]) >= 4:
+                st.line_chart(pd.DataFrame({"검색 추이": tr["series"]}), height=120)
+        else:
+            st.caption("추이 자료가 없어요.")
+    if show_news:
+        with st.spinner("뉴스 모으는 중…"):
+            nr = search_news(kw, keys, display=10, sort="date") if keys else {"error": "no-key", "news": []}
+            if nr.get("error") or not nr.get("news"):
+                nr = fetch_news_titles_free(kw, limit=10)
+        if nr.get("error"):
+            st.caption(nr["error"])
+        for n in nr.get("news", []):
+            st.markdown(f"- [{n['title']}]({n['link']})" if n.get("link") else f"- {n['title']}")
+
+
+keys, key_src = get_active_keys()
+if keys is None:
+    st.info("🔑 판정(검색량·경쟁 글)은 네이버 API 키가 있어야 나와요 — 왼쪽 **⚙️ API 설정**. 키가 없어도 세부 키워드 목록과 생성기로 보내기는 돼요.")
+
+# ── ① 검색창 (엔터로도 찾기) ──
+_sv = st.query_params.get("stage", "")
+with st.form("main_search", clear_on_submit=False):
+    fc1, fc2, fc3 = st.columns([6, 1.7, 1.3])
+    in_kw = fc1.text_input("키워드", key="main_kw_input", placeholder="키워드 하나 — 예: 제습기", label_visibility="collapsed")
+    in_stage = fc2.selectbox("내 블로그", STAGE_OPTIONS, index=(STAGE_OPTIONS.index(_sv) if _sv in STAGE_OPTIONS else 0),
+                             key="main_stage", label_visibility="collapsed", format_func=lambda s: f"{s} 블로그",
+                             help="신규 = 아직 작은 블로그. '기존'이면 더 큰 키워드도 추천으로 나와요.")
+    go = fc3.form_submit_button("찾기", type="primary", use_container_width=True)
+st.query_params["stage"] = in_stage
+if go and in_kw.strip():
+    st.session_state["main_pending"] = in_kw.strip()
+    st.session_state["main_path"] = [in_kw.strip()]
+    st.session_state["main_limit"] = 25
+
+# ── 막막할 때: 이번 달 글감 ──
+_cur_m = _kst_month()
+_mt = MONTHLY_TOPICS[_cur_m]
+st.caption(f"막막하면 — {_cur_m}월 글감 (누르면 바로 찾아요)")
+_firsts = [items[0] for items in _mt.values()]
+_cc = st.columns(len(_firsts))
+for _i, _t in enumerate(_firsts):
+    _cc[_i].button(_t, key=f"mt_chip_{_i}", on_click=_start_search, args=(_t,), use_container_width=True)
+with st.expander(f"{_cur_m}월 글감 더 보기"):
+    _ec = st.columns(3)
+    for _i, (_cat, _items) in enumerate(_mt.items()):
+        with _ec[_i % 3]:
+            st.markdown(f"**{_cat}**")
+            for _j, _t in enumerate(_items):
+                st.button(_t, key=f"mt_more_{_i}_{_j}", on_click=_start_search, args=(_t,), use_container_width=True)
+
+# ── ② 찾기 실행 ──
+_pending = st.session_state.pop("main_pending", None)
+if _pending:
+    with st.spinner(f"'{_pending}' 세부 키워드 모으는 중…"):
+        st.session_state["main_data"] = run_main_search(_pending, keys, in_stage, st.session_state.get("main_limit", 25))
+
+# ── ③ 결과 표 → 체크 → 생성기로 ──
+_data = st.session_state.get("main_data")
+if _data:
+    _rows = _data["rows"]
+    _path = st.session_state.get("main_path") or [_data["seed"]]
+    if len(_path) > 1:
+        st.caption("🧭 " + "  ›  ".join(_path))
+    _n_ok = sum(1 for r in _rows if r["판정"].startswith("🟢"))
+    st.markdown(f"#### '{_data['seed']}' 세부 키워드 {len(_rows)}개" + (f" · 🟢 추천 {_n_ok}개" if keys else ""))
+    if len(_rows) <= 1 and _data.get("error"):
+        st.warning("세부 키워드가 안 나와요. 띄어쓰기를 바꾸거나 한 단계 넓은 말로 찾아보세요.")
+    _df = pd.DataFrame(_rows).drop(columns=["_순서"])
+    _df.insert(3, "비교", _df["키워드"].apply(lambda k: "⚖" if is_contrast(k) else ""))
+    if not keys:
+        _df = _df[["선택", "키워드", "비교"]]   # 키가 없으면 판정 칸 없이
+    _edited = st.data_editor(
+        _df, key=f"main_tbl_{_data['seed']}_{len(_rows)}", hide_index=True, use_container_width=True,
+        disabled=[c for c in _df.columns if c != "선택"],
+        column_config={
+            "선택": st.column_config.CheckboxColumn("쓸 것", width="small"),
+            "판정": st.column_config.TextColumn("판정", width="small"),
+            "키워드": st.column_config.TextColumn("키워드", width="medium"),
+            "비교": st.column_config.TextColumn("비교", width="small", help="⚖ = 비교·차이 키워드(A vs B)"),
+            "월 검색": st.column_config.NumberColumn("월 검색", format="%d"),
+            "경쟁 글": st.column_config.NumberColumn("경쟁 글", format="%d"),
+            "비율": st.column_config.NumberColumn("비율", format="%.1f", help="경쟁 글 ÷ 월 검색 — 낮을수록 노리기 쉬워요"),
+        },
+    )
+    _picked = _edited.loc[_edited["선택"], "키워드"].tolist()
+    if keys:
+        st.caption("🟢 추천부터 보세요. 비율이 낮을수록(1 안팎) 찾는 사람에 비해 글이 적어요.")
+
+    with st.container(border=True):
+        if not _picked:
+            st.markdown("**✍️ 생성기로 보내기** — 위 표에서 쓸 키워드를 체크하세요. 첫째 = 메인 키워드, 나머지 = 서브 키워드.")
+        else:
+            _main, _subs = _picked[0], _picked[1:]
+            st.markdown(f"**✍️ 생성기로 보내기** — 메인 **{_main}**" + (f" · 서브 {', '.join(_subs)}" if _subs else ""))
+            _cats = list(CATEGORY_NEWS_QUERIES.keys())
+            _saved_cat = st.query_params.get("cat", "")
+            _def_idx = _cats.index("CAT-C · 정보·생활정보·꿀팁") if "CAT-C · 정보·생활정보·꿀팁" in _cats else 0
+            _cat = st.selectbox("분야 (생성기 카테고리)", _cats, index=(_cats.index(_saved_cat) if _saved_cat in _cats else _def_idx), key="main_cat")
+            st.query_params["cat"] = _cat
+            _base = _data["results"].get(_main) or {}
+            if _base.get("error"):
+                _base = {}
+            _seed_text = build_seed_text({**_base, "keyword": _main}, cat_hint_for(_cat), sub_keywords=_subs or None)
+            st.code(_seed_text, language=None, wrap_lines=True)
+            st.caption("오른쪽 위 📋 복사 → 생성기 '세부 설정 › 자막·참고 자료' 칸에 붙여넣기 → 키워드·서브 키워드·분야가 자동으로 채워져요.")
+
+    _dc1, _dc2 = st.columns(2)
+    _csv = _edited.drop(columns=["선택"]).to_csv(index=False).encode("utf-8-sig")
+    _dc1.download_button("📥 표를 CSV로 저장", _csv, file_name=f"키워드_{_data['seed']}_{datetime.now().strftime('%m%d')}.csv",
+                         mime="text/csv", use_container_width=True)
+    if st.session_state.get("main_limit", 25) < 60:
+        _dc2.button("➕ 더 많이 찾기 (최대 60개)", on_click=_more_search, args=(_data["seed"],), use_container_width=True)
+
+    with st.expander("🔎 키워드 하나 자세히 — 왜 이 판정인지 · 상위 글 · 검색 추이 · 뉴스 · 더 파기"):
+        _opts = [r["키워드"] for r in _rows]
+        _dk = st.selectbox("볼 키워드", _opts, index=(_opts.index(_picked[0]) if _picked and _picked[0] in _opts else 0), key="main_detail_kw")
+        render_detail(_dk, _data["results"].get(_dk), keys, in_stage)
+
+# ── ④ 다른 데서 글감 찾기 (옛 메뉴 5개 — 접어 둠) ──
+EXTRA_MENUS = ["📰 보도자료", "🗞️ 분야별 뉴스", "🔥 뜨는 키워드", "📋 여러 개 한꺼번에", "📈 구글 트렌드"]
+st.markdown("")
+with st.expander("🧭 다른 데서 글감 찾기 — 보도자료 · 분야별 뉴스 · 뜨는 키워드 · 여러 개 한꺼번에 · 구글 트렌드"):
+    EXTRA_MENU = st.radio("어디서 찾을까요?", EXTRA_MENUS, horizontal=True, key="extra_menu", label_visibility="collapsed")
+    EXTRA_BOX = st.container()
+
+# ============ 탭: 트렌드 대시보드 (메인) ============
+if EXTRA_MENU == "🗞️ 분야별 뉴스":
+  with EXTRA_BOX:
+      if not st.session_state.api_configured:
+          st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
+      else:
+          st.info("""🏠 카테고리별 **지금 뜨는 뉴스·이슈**를 보여줍니다. 카드에서 마음에 드는 이슈를 보면,  
+        그 키워드를 맨 위 검색창에 넣어 세부 키워드로 쪼개 보세요.  
+　🟢 네이버 데이터 (검색 API · 뉴스)""")
+
+          if "news_cache" not in st.session_state:
+              st.session_state["news_cache"] = {}
+
+          cat_names = list(CATEGORY_NEWS_QUERIES.keys())
+          chosen = st.multiselect(
+              "볼 카테고리 선택 (2~3개 추천)",
+              cat_names,
+              default=cat_names[:1],
+              key="news_chosen",
+          )
+
+          if st.button("🔄 선택한 카테고리 뉴스 가져오기", type="primary", use_container_width=True, key="news_refresh"):
+              if not chosen:
+                  st.warning("카테고리를 하나 이상 선택해주세요")
+              else:
+                  prog = st.progress(0)
+                  status = st.empty()
+                  for i, cat in enumerate(chosen):
+                      status.text(f"뉴스 가져오는 중 ({i+1}/{len(chosen)}): {cat}")
+                      news = fetch_category_news(cat, st.session_state.api_keys, per_query=6)
+                      st.session_state["news_cache"][cat] = news
+                      prog.progress((i + 1) / len(chosen))
+                  status.empty(); prog.empty()
+
+          # 선택한 카테고리: 한 줄에 2개씩, 각 카드 안에서 뉴스를 다시 2칸으로
+          if chosen:
+              def render_news_card(cat):
+                  news = st.session_state["news_cache"].get(cat)
+                  count = len(news) if news else 0
+                  st.markdown(f"**{cat}**  ·  {count}건")
+                  if news is None:
+                      st.caption("위 버튼을 누르면 이 분야 최신 뉴스가 표시됩니다")
+                  elif not news:
+                      st.caption("가져온 뉴스가 없습니다")
+                  else:
+                      show = news[:20]
+                      half = (len(show) + 1) // 2
+                      left, right = show[:half], show[half:]
+                      cL, cR = st.columns(2)
+                      for col, items, start in ((cL, left, 1), (cR, right, half + 1)):
+                          with col:
+                              for idx, n in enumerate(items, start=start):
+                                  if n["link"]:
+                                      st.markdown(f"{idx}. [{n['title']}]({n['link']})")
+                                  else:
+                                      st.write(f"{idx}. {n['title']}")
+                      st.caption("💡 쓸 이슈의 키워드를 맨 위 검색창에")
+
+              for row_start in range(0, len(chosen), 2):
+                  pair = chosen[row_start:row_start + 2]
+                  cols = st.columns(2)
+                  for ci, cat in enumerate(pair):
+                      with cols[ci]:
+                          with st.container(border=True):
+                              render_news_card(cat)
+
+# ============ 탭: 오늘의 소재 (정책 보도자료 RSS → 키워드 발굴) ============
+if EXTRA_MENU == "📰 보도자료":
+  with EXTRA_BOX:
+      st.subheader("📰 오늘의 소재 — 부처 보도자료에서 키워드 발굴")
+      st.info("""정책브리핑(korea.kr) **보도자료 목록(전 부처)**을 읽어 돈·행동·타겟 신호어로 거른 뒤,
+제목에서 뽑은 **후보 키워드의 검색량·문서수·비율까지 자동 조회**합니다.
+보도자료 시점 = 검색 급증 직전 + 경쟁 글 거의 0인 골든타임 · 보도자료 원문 링크는 글 쓸 때 팩트 출처로도 사용
+🟢 후보 키워드는 맨 위 검색창에서 최종 판정을 확인하고 쓰세요.""")
+
+      if not st.session_state.api_configured:
+          st.warning("👈 네이버 API 키가 없으면 수집·필터까지만 하고, 검색량 실측은 건너뜁니다")
+
+      col_r1, col_r2 = st.columns(2)
+      with col_r1:
+          # 보도자료 대부분은 행정 잡음이라 신호어에 걸리는 건 소수 — 넉넉히 가져온다
+          rss_pages = st.selectbox("가져올 목록 페이지 수 (페이지당 약 20건)", [3, 5, 10], index=1, key="rss_pages")
+      with col_r2:
+          rss_topn = st.selectbox("검색량까지 실측할 상위 소재 수", [5, 8, 12], index=1, key="rss_topn")
+
+      if st.button("📰 보도자료 수집·분석", type="primary", use_container_width=True, key="rss_btn"):
+          with st.spinner(f"정책브리핑 보도자료 수집 중 ({rss_pages}페이지)..."):
+              res = fetch_press_releases(pages=rss_pages)
+          for e in res["errors"]:
+              st.warning(f"⚠ {e}")
+          all_items = res["items"]
+
+          if not all_items:
+              st.error("수집된 보도자료가 없습니다 — korea.kr 페이지 구조가 바뀌었을 수 있어요 (fetch_press_releases 정규식 수정 필요)")
+          else:
+              st.caption(f"✅ 보도자료 {len(all_items)}건 수집 (전 부처, 최신순)")
+              scored = []
+              for it in all_items:
+                  s, hits = score_press_item(it["title"], it.get("pubDate", ""))
+                  # v6.24: 돈 또는 행동 신호가 있어야 통과 — 타겟(청년·자녀 등)만으로는 부족.
+                  # ("청년 700명 파견"·"청년의 목소리" 같은 행정 홍보가 타겟+최근성만으로
+                  #  상위를 점령하던 문제. 타겟은 가점 역할만.)
+                  if s >= 2 and any(h in ("💰돈", "⚡행동") for h in hits):
+                      it2 = dict(it)
+                      it2["점수"] = s
+                      it2["신호"] = " ".join(hits)
+                      it2["후보"] = extract_candidate_keywords(it["title"])
+                      scored.append(it2)
+              scored.sort(key=lambda x: x["점수"], reverse=True)
+              st.session_state["rss_all"] = all_items   # 0건일 때 훑어보기 폴백용
+
+              # 상위 N건은 후보 키워드 실측 (광고 API + 블로그 문서수)
+              if st.session_state.api_configured and scored:
+                  top = scored[:rss_topn]
+                  prog2 = st.progress(0)
+                  st2 = st.empty()
+                  for i, it in enumerate(top):
+                      st2.text(f"후보 키워드 실측 중 ({i+1}/{len(top)}): {it['후보'][0] if it['후보'] else '-'}")
+                      checks = []
+                      for c in it["후보"]:
+                          checks.append(quick_kw_check(c, st.session_state.api_keys))
+                          time.sleep(0.15)
+                      it["실측"] = checks
+                      prog2.progress((i + 1) / len(top))
+                  st2.empty(); prog2.empty()
+
+              st.session_state["rss_scored"] = scored
+              st.caption(f"신호어 필터 통과 {len(scored)}건 / 전체 수집 {len(all_items)}건")
+
+      # 결과 표시 (세션 유지 — 버튼 다시 안 눌러도 남아있음)
+      _rss_scored = st.session_state.get("rss_scored", [])
+      if _rss_scored:
+          _show_n = st.session_state.get("rss_topn", 8)
+          st.markdown(f"### 🏆 오늘의 소재 상위 {min(_show_n, len(_rss_scored))}건")
+          for it in _rss_scored[:_show_n]:
+              with st.container(border=True):
+                  st.markdown(f"**[{it['title']}]({it['link']})**")
+                  st.caption(f"{it['부처']} · {it.get('pubDate', '')[:16]} · 점수 {it['점수']} · {it['신호']}")
+                  if it.get("실측"):
+                      for c in it["실측"]:
+                          vol, doc, ratio = c["월간검색"], c["문서수"], c["비율"]
+                          good = (vol or 0) >= 500 and (doc or 0) < 30000 and c["경쟁"] != "높음"
+                          emoji = "🟢" if good else "⚪"
+                          vol_s = f"{vol:,}" if isinstance(vol, int) else "?"
+                          doc_s = f"{doc:,}" if isinstance(doc, int) else "?"
+                          ratio_s = ratio if ratio is not None else "—"
+                          st.write(f"{emoji} **{c['키워드']}** — 월 {vol_s}회 · 문서 {doc_s}개 · 비율 {ratio_s} · 경쟁 {c['경쟁'] or '—'}")
+                  elif it.get("후보"):
+                      st.write("후보 키워드: " + ", ".join(it["후보"]))
+
+          if len(_rss_scored) > _show_n:
+              with st.expander(f"필터 통과 나머지 {len(_rss_scored) - _show_n}건 보기"):
+                  for it in _rss_scored[_show_n:]:
+                      cand = (" → 후보: " + ", ".join(it["후보"])) if it.get("후보") else ""
+                      st.markdown(f"- [{it['title']}]({it['link']}) ({it['부처']} · 점수 {it['점수']}){cand}")
+
+          st.info("🟢 후보를 맨 위 검색창에 넣어 판정 확인 → 체크해서 생성기로. "
+                  "후보 추출은 기계라 어색할 수 있어요 — 제목을 보고 직접 다듬는 게 더 정확합니다.")
+      elif st.session_state.get("rss_all"):
+          # 수집은 됐는데 신호어 필터 통과 0건 — 흔한 날 (보도자료 대부분은 행정 잡음)
+          st.info("오늘은 돈·육아 신호어에 걸린 보도자료가 없어요. 아래 전체 제목을 훑어보거나, "
+                  "맨 위 검색창 아래 이번 달 글감을 눌러 보세요.")
+          with st.expander(f"수집한 보도자료 전체 제목 훑어보기 ({len(st.session_state['rss_all'])}건)"):
+              for it in st.session_state["rss_all"]:
+                  st.markdown(f"- [{it['title']}]({it['link']}) ({it['부처']} · {it.get('pubDate', '')})")
+
+# ============ 탭1: 네이버 단일 ============
+
+# ============ 탭2: 네이버 일괄 ============
+if EXTRA_MENU == "📋 여러 개 한꺼번에":
+  with EXTRA_BOX:
+      if not st.session_state.api_configured:
+          st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
+      else:
+          st.info("📋 **후보 키워드가 여러 개일 때** — 한 줄에 하나씩 넣으면 한꺼번에 판정해 비교해줍니다.  \n　🟢 네이버 데이터 (검색 API + 검색광고 API)")
+          keywords_text = st.text_area("키워드들 (한 줄에 하나씩)", placeholder="다이어트\n홈트레이닝\n간헐적단식", height=150)
+          if st.button("🔍 일괄 분석", type="primary", use_container_width=True, key="bulk_btn"):
+              keywords = [k.strip() for k in keywords_text.split("\n") if k.strip()]
+              if not keywords:
+                  st.error("키워드를 입력해주세요")
+              else:
+                  progress = st.progress(0); status = st.empty()
+                  results = []
+                  for i, kw in enumerate(keywords):
+                      status.text(f"분석 중 ({i+1}/{len(keywords)}): {kw}")
+                      results.append(analyze_keyword(kw, st.session_state.api_keys))
+                      progress.progress((i + 1) / len(keywords))
+                      time.sleep(0.3)
+                  status.empty(); progress.empty()
+                
+                  df_data = []
+                  for r in results:
+                      if r.get("error"):
+                          df_data.append({"키워드": r.get("keyword", "?"), "에러": r["error"]})
+                      else:
+                          df_data.append({
+                              "키워드": r["keyword"], "월간검색": r["monthly_search"],
+                              "주간검색": r["weekly_search"], "일간검색": r["daily_search"],
+                              "블로그수": r["blog_count"], "경쟁": r["competition"],
+                              "모바일%": f"{r['mobile_ratio']*100:.0f}%",
+                              "노출점수": r["exposure_score"],
+                              "난이도": f"{r['difficulty_emoji']} {r['difficulty']}",
+                          })
+                  df = pd.DataFrame(df_data)
+                  st.success(f"✅ {len(results)}개 분석 완료")
+                  st.dataframe(df, hide_index=True, use_container_width=True)
+
+                  # v6.18: 후보가 전부 넓은 키워드면 → 세부 글감 파기 추천
+                  _ok = [r for r in results if not r.get("error")]
+                  if _ok and all(r.get("monthly_search", 0) >= 30000 for r in _ok):
+                      suggest_tab(
+                          "넣은 키워드가 다 검색량 큰 넓은 단어예요 — 그대로는 경쟁이 세요",
+                          "🪓 세부 글감 파기",
+                          "각 단어를 거기에 넣어 세부 키워드로 쪼개면 이기기 쉬워져요",
+                      )
+                  csv = df.to_csv(index=False).encode("utf-8-sig")
+                  st.download_button("📥 CSV 다운로드", csv,
+                      file_name=f"keyword_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                      mime="text/csv", use_container_width=True)
+
+# ============ 탭3: 구글 트렌드 ============
+if EXTRA_MENU == "📈 구글 트렌드":
+  with EXTRA_BOX:
+      st.info("💡 구글 트렌드는 API 키가 필요 없습니다. 최대 5개 키워드 비교 가능.  \n　🔵 구글 데이터 (Google Trends)")
+    
+      col_a, col_b, col_c = st.columns([2, 1, 1])
+      with col_a:
+          trend_keywords = st.text_input("키워드 (쉼표로 구분, 최대 5개)",
+                                         placeholder="예: 다이어트, 홈트레이닝, 간헐적단식", key="trend_kw")
+      with col_b:
+          timeframe_label = st.selectbox("기간",
+              ["지난 7일", "지난 1개월", "지난 3개월", "지난 12개월", "지난 5년"],
+              index=3, key="trend_tf")
+          timeframe_map = {
+              "지난 7일": "now 7-d", "지난 1개월": "today 1-m",
+              "지난 3개월": "today 3-m", "지난 12개월": "today 12-m",
+              "지난 5년": "today 5-y",
+          }
+      with col_c:
+          geo = st.selectbox("국가", ["한국", "전세계", "미국", "일본"], index=0, key="trend_geo")
+          geo_map = {"한국": "KR", "전세계": "", "미국": "US", "일본": "JP"}
+    
+      if st.button("📈 트렌드 분석", type="primary", use_container_width=True, key="trend_btn"):
+          kws = [k.strip() for k in trend_keywords.split(",") if k.strip()]
+          if not kws:
+              st.error("키워드를 입력해주세요")
+          elif len(kws) > 5:
+              st.error("최대 5개까지만 입력 가능합니다")
+          else:
+              # v6.18: 비교 탭인데 1개만 넣었으면 → 단일 분석은 키워드 검증 추천
+              if len(kws) == 1:
+                  suggest_tab(
+                      "구글 트렌드는 '여러 키워드 비교'용이에요 — 1개만 넣으면 비교가 안 돼요",
+                      "🎯 키워드 검증 · 쓸까 말까",
+                      "이 키워드 1개의 노출 가능성을 보려면 거기서 분석하세요 (아래는 단일 추이만)",
+                  )
+              with st.spinner(f"구글 트렌드 조회 중..."):
+                  result = get_google_trends(kws, timeframe_map[timeframe_label], geo_map[geo])
+            
+              if result.get("error"):
+                  st.error(f"❌ {result['error']}")
+                  st.caption("⚠️ 구글이 일시적으로 차단했을 수 있어요. 1~2분 후 재시도")
+              else:
+                  st.success(f"✅ '{', '.join(result['keywords'])}' 분석 완료")
+                
+                  if "interest_over_time" in result:
+                      st.subheader("📈 시간별 관심도 (0~100)")
+                      st.line_chart(result["interest_over_time"], height=300)
+                      iot = result["interest_over_time"]
+                      summary_data = []
+                      for kw in result["keywords"]:
+                          if kw in iot.columns:
+                              summary_data.append({
+                                  "키워드": kw, "평균": round(iot[kw].mean(), 1),
+                                  "최댓값": int(iot[kw].max()), "최솟값": int(iot[kw].min()),
+                                  "현재": int(iot[kw].iloc[-1]) if len(iot) > 0 else 0,
+                              })
+                      if summary_data:
+                          st.dataframe(pd.DataFrame(summary_data), hide_index=True, use_container_width=True)
+                
+                  if "interest_by_region" in result:
+                      st.markdown("---")
+                      st.subheader("🌏 지역별 관심도 TOP 10")
+                      st.bar_chart(result["interest_by_region"], height=300)
+                
+                  col_top, col_rise = st.columns(2)
+                  with col_top:
+                      if "related_top" in result:
+                          st.subheader(f"🔝 '{result['keywords'][0]}' 인기 연관어")
+                          st.dataframe(result["related_top"], hide_index=True, use_container_width=True)
+                  with col_rise:
+                      if "related_rising" in result:
+                          st.subheader(f"🚀 '{result['keywords'][0]}' 급상승 연관어")
+                          st.dataframe(result["related_rising"], hide_index=True, use_container_width=True)
+
+# ============ 탭5: 트렌드 발굴 (신규) ============
+if EXTRA_MENU == "🔥 뜨는 키워드":
+  with EXTRA_BOX:
+      if not st.session_state.api_configured:
+          st.warning("👈 왼쪽 사이드바에서 네이버 API 키를 먼저 입력해주세요")
+      else:
+          st.info("""🔥 **뭘 쓸지 막막할 때** — 관심 분야 단어 하나를 씨앗으로 넣으면, **그 분야에서 요즘 뜨고 있는 연관 키워드**를 찾아드립니다.
+        (예: '부모급여' 넣으면 그 주변 뜨는 키워드가 나옴) 최근 3개월 트렌드를 분석해 상승률 높은 순으로 보여줘요. (데이터랩 권한 필요)  
+　🟢 네이버 데이터 (검색광고 API + 데이터랩)""")
+
+          col_a, col_b = st.columns([3, 1])
+          with col_a:
+              seed_kw = st.text_input("관심 분야 키워드", placeholder="예: 다이어트", key="trend_seed")
+          with col_b:
+              analyze_count = st.selectbox("분석 개수", [10, 15, 20], index=0, key="trend_count",
+                                           help="많을수록 정확하지만 느려집니다")
+
+          st.caption("⚠️ 연관 키워드마다 데이터랩을 조회하므로, 10개 기준 약 20~40초 걸립니다.")
+
+          only_related = st.checkbox(
+              "🔲 씨앗 관련 키워드만 보기 (체크 해제 시 전체를 관련도 순으로 표시)",
+              value=True, key="trend_only_related",
+              help="체크: 씨앗 단어를 포함한 연관어만 남깁니다 (세탁기 같은 잡음 제거). 해제: 다 보여주되 관련 높은 순으로 정렬합니다.",
+          )
+
+          if st.button("🔥 트렌드 발굴 시작", type="primary", use_container_width=True, key="trend_dig_btn"):
+              if not seed_kw.strip():
+                  st.error("키워드를 입력해주세요")
+              else:
+                  # 1) 연관 키워드 수집
+                  with st.spinner("연관 키워드 수집 중..."):
+                      rel_result = get_related_keywords_list(seed_kw, st.session_state.api_keys, limit=analyze_count)
+
+                  if rel_result.get("error"):
+                      st.error(f"❌ {rel_result['error']}")
+                  else:
+                      keywords = rel_result["keywords"]
+                      # 씨앗 관련도 필터 적용 (체크 시 엄격, 해제 시 관련도 순 정렬)
+                      keywords = filter_related_keywords(seed_kw, keywords, strict=only_related)
+                      if only_related:
+                          st.caption(f"연관 키워드 {len(keywords)}개 (씨앗 '{seed_kw}' 관련만). 트렌드 분석 시작...")
+                      else:
+                          st.caption(f"연관 키워드 {len(keywords)}개 (관련도 순). 트렌드 분석 시작...")
+
+                      # v6.18: 연관어가 씨앗 1개뿐이면(좁은 단어) → 세부 글감 파기 추천
+                      if len(keywords) <= 1:
+                          suggest_tab(
+                              f"'{seed_kw}'는 연관 키워드가 거의 없는 좁은 단어예요 (검색광고 데이터가 얇음)",
+                              "🪓 세부 글감 파기",
+                              "이 단어를 넣으면 자동완성으로 세부 키워드(요금·사고·후기 등)가 나와요",
+                          )
+
+                      # 2) 각 키워드의 트렌드 방향 분석
+                      progress = st.progress(0)
+                      status = st.empty()
+                      trend_data = []
+
+                      for i, kw_info in enumerate(keywords):
+                          kw = kw_info["키워드"]
+                          status.text(f"트렌드 분석 중 ({i+1}/{len(keywords)}): {kw}")
+                          direction = get_trend_direction(kw, st.session_state.api_keys)
+                          if direction:
+                              trend_data.append({
+                                  "키워드": kw,
+                                  "월간검색": kw_info["월간검색"],
+                                  "경쟁": kw_info["경쟁"],
+                                  "관련": kw_info.get("관련", ""),
+                                  "트렌드변화": direction["change_pct"],
+                                  "최근관심도": direction["recent_avg"],
+                              })
+                          progress.progress((i + 1) / len(keywords))
+                          time.sleep(0.3)
+
+                      status.empty()
+                      progress.empty()
+
+                      if not trend_data:
+                          st.warning("트렌드 데이터를 가져오지 못했습니다. 데이터랩 권한을 확인해주세요.")
+                      else:
+                          # 상승률 순 정렬
+                          trend_data.sort(key=lambda x: x["트렌드변화"], reverse=True)
+
+                          st.success(f"✅ '{seed_kw}' 분야 트렌드 분석 완료")
+
+                          # 상승/하락 분류
+                          rising = [t for t in trend_data if t["트렌드변화"] > 5]
+                          falling = [t for t in trend_data if t["트렌드변화"] < -5]
+
+                          col_r, col_f = st.columns(2)
+                          with col_r:
+                              st.subheader("🔥 뜨는 키워드")
+                              if rising:
+                                  for t in rising[:10]:
+                                      st.markdown(
+                                          f"**{t['키워드']}** &nbsp; "
+                                          f"📈 +{t['트렌드변화']}% &nbsp; "
+                                          f"(월 {t['월간검색']:,}회, 경쟁:{t['경쟁']})"
+                                      )
+                              else:
+                                  st.caption("뚜렷하게 상승 중인 키워드가 없습니다")
+
+                          with col_f:
+                              st.subheader("❄️ 식는 키워드")
+                              if falling:
+                                  for t in falling[:10]:
+                                      st.markdown(
+                                          f"**{t['키워드']}** &nbsp; "
+                                          f"📉 {t['트렌드변화']}% &nbsp; "
+                                          f"(월 {t['월간검색']:,}회)"
+                                      )
+                              else:
+                                  st.caption("뚜렷하게 하락 중인 키워드가 없습니다")
+
+                          # 전체 테이블
+                          st.markdown("---")
+                          st.subheader("📋 전체 결과 (상승률 순)")
+                          df = pd.DataFrame(trend_data)
+                          df_display = df.copy()
+                          df_display["월간검색"] = df_display["월간검색"].apply(lambda x: f"{x:,}")
+                          df_display["트렌드변화"] = df_display["트렌드변화"].apply(
+                              lambda x: f"📈 +{x}%" if x > 5 else (f"📉 {x}%" if x < -5 else f"➡️ {x}%")
+                          )
+                          df_display = df_display.rename(columns={"트렌드변화": "트렌드"})
+                          # 보기 좋은 순서로 정렬 (관련 열이 있으면 포함)
+                          col_order = [c for c in ["키워드", "관련", "월간검색", "경쟁", "트렌드", "최근관심도"] if c in df_display.columns]
+                          df_display = df_display[col_order]
+                          st.dataframe(df_display, hide_index=True, use_container_width=True)
+
+                          # CSV 다운로드
+                          csv = df.to_csv(index=False).encode("utf-8-sig")
+                          st.download_button(
+                              "📥 CSV 다운로드", csv,
+                              file_name=f"trend_discovery_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                              mime="text/csv", use_container_width=True,
+                          )
+
+                          st.caption("💡 '뜨는 키워드'를 맨 위 검색창에 넣으면 세부 키워드까지 판정해요.")
+
+# ============ 탭6: 세부 키워드 발굴 ============
+# v6.21: 두딸파파 씨앗 풀 — "뭘 넣지?" 결정 피로 제거용 내장 씨앗.
+# 위에서부터 순서대로 돌려 쓰면 됨(고민 금지). 소진되면 🤖 AI 키워드 탭에서 리필.
+# v6.25: 정체성 확장(자녀 중심 32 → 가정·자녀 경제 55) — 연말정산·청약·청년/신혼 지원·
+#        건강보험·연금 카테고리 추가. 투자·투기(주식·코인·ETF·펀드)는 전면 제외,
+#        세액공제·제도·절약 앵글만. (네이버 초유딩파파용 = 가족 앵글 있는 돈)
+SEED_POOL = [
+    "(직접 입력)",
+    # ── 정책·수당 ──
+    "아동수당", "부모급여", "자녀장려금", "근로장려금", "첫만남이용권", "국민행복카드",
+    "양육수당", "교육급여", "아이돌봄서비스", "육아휴직급여", "배우자 출산휴가",
+    # ── 출산·양육 신제도 ──
+    "신생아 특례대출", "육아기 근로시간 단축급여", "6+6 부모육아휴직제",
+    # ── 다자녀 ──
+    "다자녀 혜택", "다자녀 국가장학금", "다자녀 자동차 감면", "다자녀 전기요금", "다자녀 KTX",
+    # ── 교육·학교 ──
+    "초등 입학준비금", "늘봄학교", "방과후학교", "초등 돌봄교실", "유아학비", "교육비 세액공제",
+    # ── 연말정산·세금 ──
+    "연말정산 자녀공제", "자녀 세액공제", "연말정산 인적공제", "의료비 세액공제",
+    "월세 세액공제", "신용카드 소득공제", "산후조리원 세액공제",
+    # ── 청약·주거 ──
+    "자녀 청약통장", "청년 주택드림 청약통장", "신혼부부 특별공급", "생애최초 특별공급",
+    "신혼부부 전세자금대출", "신생아 특례 디딤돌대출",
+    # ── 청년·신혼 지원 ──
+    "청년도약계좌", "청년월세 특별지원",
+    # ── 건강보험·의료 ──
+    "건강보험 피부양자", "건강보험료 환급", "본인부담상한제", "영유아 건강검진",
+    "어린이 독감 예방접종", "아이 병원비 지원",
+    # ── 연금·목돈 (세액공제·제도 앵글만, 투자·종목 제외) ──
+    "국민연금 임의가입", "연금저축 세액공제", "노란우산공제", "IRP 세액공제",
+    # ── 자녀 자산 ──
+    "어린이 통장", "미성년 자녀 증여", "어린이 실비보험",
+    # ── 생활 ──
+    "지역화폐", "초등 준비물",
+]
+
+
+
+
 
 
 st.markdown("---")
-st.caption("💡 키워드 종합 분석기 v6.40 | 네이버 + 구글 + 데이터랩 + 트렌드 + 이번 달 글감")
+st.caption("💡 키워드 찾기 v7.0 | 네이버 + 구글 + 데이터랩 + 트렌드 + 이번 달 글감")
