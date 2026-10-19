@@ -1,9 +1,10 @@
 """
-키워드 종합 분석기 v7.0
+키워드 종합 분석기 v7.1
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + 이번 달 글감
 
 [변경 이력]
+- v7.1: (D-1019-1, Muse AI 리뷰 반영) 구매의도 지원 — ① "씨앗+추천/가격/순위/후기" 자동완성 확장(대비 키워드와 같은 방식, 검색당 자동완성 +4회) ② 표에 💰 구매형 칸 + 구매형 키워드의 광고경쟁 '높음'은 "돈 되는 주제" 신호로 안내 ③ 보내기 박스에 ⚖/💰가 있으면 "제휴글 후보" 안내(제휴글쓰기는 상품을 직접 넣는 방식이라 자동 채움 안내는 안 함) ④ 죽은 코드 BLOG_PROFILES·CATEGORY_POOLS·analyze_demographics 삭제(BLOG_CHOICES는 이미 없음). ⚠ py_compile + 함수 단위 시험만.
 - v7.0: (D-1014-8) 화면 전면 개편(A안 · 한 화면) — 사장님 "너무 복잡하고 조잡해". 왼쪽 메뉴 9개를 없애고 검색창 하나로: 키워드 → 세부·롱테일 키워드 판정 표(동시 3개씩 판정) → 쓸 것 체크 → 생성기로(첫째 = 메인, 나머지 = 서브 키워드). 막막할 땐 검색창 아래 이번 달 글감 버튼. '키워드 하나 자세히'(판정 이유·상위 글·추이·뉴스·더 파기)와 '다른 데서 글감 찾기'(보도자료·분야별 뉴스·뜨는 키워드·여러 개 한꺼번에·구글 트렌드)는 접어 둠. 옛 한 번에 보기·세부 글감 파기·키워드 검증·이번 달 글감 화면은 이 한 화면으로 합쳐 삭제(⭐담아두기는 표 CSV 저장으로).
 - v6.41: (D-1014-7) 돈나나 "세부 + 대비로 쪼개기" 반영 — ① 대비 키워드: 자동완성을 "씨앗 + vs·차이·비교"로도 받아 세부 글감 파기·한 번에 보기 연관어·생성기 서브 키워드에 함께 실음(⚖ 표시). 검색광고 연관어·자음 확장엔 잘 안 잡히던 것(예: 아이폰17 → vs 에어 차이·vs 17e 비교). 대비가 없는 주제(제습기 등)는 빈손이라 그냥 지나감 ② 세부 글감 파기 결과에서 "🔍 한 번에 보기로 이어서 파기" — 1단계에서 끝나던 것을 한 번에 보기의 파고들기(경로 표시)로 이어 감. ⚠ 로컬 파이썬 없어 정적 검토만.
 - v6.40: (D-1014-1) 세부 키워드 '자음 확장' — 자동완성을 "씨앗 + ㄱ~ㅎ"로 여러 번 받아 롱테일을 넓게 모음(예: '제습기'만 넣으면 8개 구매형뿐 → '제습기 ㅂ'에서 보관·버리는법·분해청소). 생성기 v12.13 '서브 키워드' 칸으로 보내기 시드에 실려 감.
@@ -466,20 +467,7 @@ def analyze_keyword(keyword, keys):
 # detectCategory/detectIntent가 작동한다. 분석 결과를 그 칸에 붙일
 # 자연스러운 시드 문단으로 변환해준다. blog_ai_writer는 수정하지 않는다.
 
-# 블로그별 카테고리 신호 단어 (detectCategory 적중률을 높이기 위한 힌트)
-# v6.13: 각 프로필은 '카테고리(CAT) 신호어'만 담는다.
-#   검색의도(INT)·글 성격은 정적 힌트로 강제하지 않고 키워드 자신과 연관어가 정하게 둔다.
-#   (이전엔 cat_hint/intent_hint에 INT-1 단어(지원금·혜택·금액·신청)를 박아
-#    모든 시드가 '가격확인/정보성'으로 고정됐음 → 육아·교육·시기형 키워드까지 오분류)
-BLOG_PROFILES = {
-    "ioneteam (IT 문제해결)": {
-        "cat_hint": "스마트폰 갤럭시 아이폰 노트북 앱 컴퓨터 IT",
-    },
-    "reviewheart (육아·정책·리뷰)": {
-        "cat_hint": "육아 자녀 교육 부모",
-    },
-    "(자동 감지)": {"cat_hint": ""},
-}
+# v7.1 (D-1019-1): BLOG_PROFILES 삭제 — 정의만 있고 쓰는 곳 없음(Muse AI 리뷰 지적)
 
 # ================================================
 # 신규/기존 블로그별 키워드 합격 판정
@@ -569,8 +557,12 @@ def judge_keyword(result, blog_stage="신규"):
             reasons.append(f"ℹ️ 상위 글이 최근 글 위주 (평균 {int(avg_days)}일) — 시기성 키워드라 빨리 쓰는 게 유리")
 
     # 5) 광고 경쟁 — 안내만 (랭킹 난이도가 아니라 상업성)
+    #    v7.1: 구매형 키워드에선 '높음' = 돈 되는 주제라는 신호로 안내
     if comp == "높음":
-        reasons.append("ℹ️ 광고 경쟁 높음 — 상업성 있는 키워드 (랭킹 난이도와 무관, 광고 수익엔 +)")
+        if is_buy_intent(result.get("keyword", "")):
+            reasons.append("💰 광고 경쟁 높음 — 구매형 키워드라 '돈 되는 주제' 신호. 쇼핑커넥트 구매 가이드 후보 (랭킹 난이도와 무관)")
+        else:
+            reasons.append("ℹ️ 광고 경쟁 높음 — 상업성 있는 키워드 (랭킹 난이도와 무관, 광고 수익엔 +)")
 
     if points >= 3:
         grade, emoji = "합격", "🟢"
@@ -708,145 +700,10 @@ def get_datalab_trend(keywords_groups, start_date, end_date, time_unit,
         return {"error": f"데이터랩 API 오류: {str(e)[:200]}"}
 
 
-def analyze_demographics(keyword, keys):
-    """키워드의 연령대/성별/기기별 분석"""
-    today = datetime.now()
-    end_date = today.strftime("%Y-%m-%d")
-    start_date = (today - timedelta(days=90)).strftime("%Y-%m-%d")  # 최근 3개월
-    
-    groups = [{"groupName": keyword, "keywords": [keyword]}]
-    result = {"keyword": keyword}
-    
-    # 1) 시간별 추이
-    base = get_datalab_trend(groups, start_date, end_date, "date", keys)
-    if "error" in base:
-        return {"error": base["error"]}
-    result["time_trend"] = base
-    
-    # 2) 연령대별 (10대~60대+)
-    age_results = {}
-    age_groups = {
-        "10대": ["2"], "20대": ["3", "4"], "30대": ["5", "6"],
-        "40대": ["7", "8"], "50대": ["9", "10"], "60대+": ["11"]
-    }
-    for age_label, age_codes in age_groups.items():
-        r = get_datalab_trend(groups, start_date, end_date, "month", keys, ages=age_codes)
-        if "error" not in r and r.get("results"):
-            # 평균값 계산
-            data_points = r["results"][0].get("data", [])
-            if data_points:
-                avg = sum(d["ratio"] for d in data_points) / len(data_points)
-                age_results[age_label] = round(avg, 2)
-            else:
-                age_results[age_label] = 0
-        else:
-            age_results[age_label] = 0
-        time.sleep(0.2)  # rate limit 회피
-    result["by_age"] = age_results
-    
-    # 3) 성별
-    gender_results = {}
-    for g_label, g_code in [("남성", "m"), ("여성", "f")]:
-        r = get_datalab_trend(groups, start_date, end_date, "month", keys, gender=g_code)
-        if "error" not in r and r.get("results"):
-            data_points = r["results"][0].get("data", [])
-            if data_points:
-                avg = sum(d["ratio"] for d in data_points) / len(data_points)
-                gender_results[g_label] = round(avg, 2)
-            else:
-                gender_results[g_label] = 0
-        else:
-            gender_results[g_label] = 0
-        time.sleep(0.2)
-    result["by_gender"] = gender_results
-    
-    # 4) 기기별
-    device_results = {}
-    for d_label, d_code in [("PC", "pc"), ("모바일", "mo")]:
-        r = get_datalab_trend(groups, start_date, end_date, "month", keys, device=d_code)
-        if "error" not in r and r.get("results"):
-            data_points = r["results"][0].get("data", [])
-            if data_points:
-                avg = sum(d["ratio"] for d in data_points) / len(data_points)
-                device_results[d_label] = round(avg, 2)
-            else:
-                device_results[d_label] = 0
-        else:
-            device_results[d_label] = 0
-        time.sleep(0.2)
-    result["by_device"] = device_results
-    
-    return result
+# v7.1 (D-1019-1): analyze_demographics 삭제 — 정의만 있고 쓰는 곳 없음(Muse AI 리뷰 지적)
 
 
-# ================================================
-# 메인 대시보드용 카테고리별 키워드 풀
-# ================================================
-# blog_ai_writer 카테고리(CAT-A~L)와 일치. 각 카드의 '갱신' 버튼을 누르면
-# 해당 풀의 키워드 추세를 데이터랩으로 훑어 급상승만 보여준다.
-CATEGORY_POOLS = {
-    "CAT-A · IT·컴퓨터·스마트폰": [
-        "아이폰", "갤럭시", "갤럭시S26", "노트북", "윈도우", "맥북", "에어팟", "갤럭시워치",
-        "아이패드", "태블릿", "무선이어폰", "모니터", "그래픽카드", "SSD", "공유기",
-        "블루투스", "USB", "충전기", "키보드", "웹캠",
-    ],
-    "CAT-AB · IT + 경제·재테크": [
-        "스마트폰 보조금", "통신비 절약", "알뜰폰", "휴대폰 성지", "자급제폰",
-        "데이터 무제한", "인터넷 가입", "결합할인", "중고폰 시세", "리퍼폰",
-    ],
-    "CAT-B · 경제·재테크·절약": [
-        "주식", "ETF", "배당주", "적금", "예금금리", "연금저축", "ISA", "청약통장",
-        "환율", "금값", "비트코인", "퇴직연금", "절세", "신용점수", "대출금리",
-    ],
-    "CAT-C · 정보·생활정보·꿀팁": [
-        "전기요금", "도시가스", "주민등록등본", "민원24", "정부24", "국세청 환급",
-        "자동차세", "재산세", "건강보험료", "실업급여", "전입신고", "공동인증서",
-        "여권 발급", "운전면허 갱신", "쓰레기 종량제",
-    ],
-    "CAT-D · 육아·교육": [
-        "이유식", "어린이집", "유치원", "분유", "기저귀", "아기 수면교육",
-        "돌잔치", "유아 영어", "학습지", "초등 입학", "받아쓰기", "구구단",
-        "어린이 영양제", "예방접종", "아기 발달",
-    ],
-    "CAT-E · 건강·운동·다이어트": [
-        "다이어트", "홈트레이닝", "단백질", "유산소", "헬스", "필라테스",
-        "간헐적단식", "혈압", "콜레스테롤", "영양제", "비타민", "단식",
-        "스트레칭", "체지방", "근력운동",
-    ],
-    "CAT-F · 뷰티·패션": [
-        "선크림", "쿠션", "립밤", "여름 코디", "원피스", "운동화",
-        "향수", "탈모 샴푸", "헤어스타일", "네일", "다운펌", "기초화장품",
-    ],
-    "CAT-G · 여행·맛집": [
-        "제주도 여행", "강릉 여행", "부산 맛집", "캠핑", "글램핑", "호캉스",
-        "당일치기", "국내여행", "여름 휴가지", "물놀이", "계곡", "워터파크",
-        "드라이브 코스", "펜션", "야경 명소",
-    ],
-    "CAT-H · 일상·감성·에세이": [
-        "오늘의 날씨", "주말 나들이", "취미", "독서", "홈카페", "반신욕",
-        "미니멀라이프", "정리수납", "플랜테리어", "캘리그라피",
-    ],
-    "CAT-I · 문화·예술·영화·음악": [
-        "넷플릭스 추천", "드라마 추천", "영화 추천", "OTT", "디즈니플러스",
-        "웹툰", "전시회", "콘서트", "뮤지컬", "신곡",
-    ],
-    "CAT-S · 스포츠·경기·선수": [
-        "손흥민", "이강인", "KBO", "프리미어리그", "챔피언스리그", "월드컵",
-        "야구 순위", "축구 중계", "골프", "마라톤", "올림픽", "MLB",
-    ],
-    "CAT-J · 반려동물·펫": [
-        "강아지 사료", "고양이 사료", "강아지 훈련", "반려동물 보험", "펫호텔",
-        "강아지 예방접종", "고양이 화장실", "반려견 등록", "강아지 미용", "펫푸드",
-    ],
-    "CAT-K · AI·자동화·툴": [
-        "챗GPT", "구글 제미나이", "AI 그림", "프롬프트", "AI 영상", "노션",
-        "엑셀 함수", "구글 스프레드시트", "캔바", "미드저니", "클로드", "AI 글쓰기",
-    ],
-    "CAT-L · 부동산·청약·투자": [
-        "아파트 청약", "전세 대출", "주택담보대출", "분양", "재건축", "부동산 세금",
-        "전월세 신고", "임대차", "디딤돌대출", "보금자리론", "신생아 특례", "오피스텔",
-    ],
-}
+# v7.1 (D-1019-1): CATEGORY_POOLS 삭제 — 정의만 있고 쓰는 곳 없음(Muse AI 리뷰 지적)
 
 
 def scan_category_trends(pool, keys, top_n=8):
@@ -1168,6 +1025,37 @@ def get_contrast_keywords(seed):
     return out
 
 
+# v7.1 (D-1019-1): 구매형 키워드 — "씨앗 + 추천·가격·순위·후기" 자동완성. 대비 키워드(AC_CONTRAST)와 같은 방식.
+#   용도: 쇼핑커넥트 구매 가이드 키워드 발굴. "비교"는 AC_CONTRAST에 이미 있어 자동완성 확장에선 뺐다(배지 판정에는 포함).
+AC_BUY = ["추천", "가격", "순위", "후기"]
+BUY_WORDS = ("추천", "가격", "최저가", "할인", "순위", "비교", "후기", "구매")
+
+
+def is_buy_intent(kw):
+    k = (kw or "").lower()
+    return any(w in k for w in BUY_WORDS)
+
+
+def get_buy_keywords(seed):
+    seed = (seed or "").strip()
+    if not seed:
+        return []
+    head = seed.split()[0]
+    out = []
+    for suf in AC_BUY:
+        q = seed + " " + suf
+        res = get_autocomplete_keywords(q)
+        if res["error"]:
+            continue
+        for w in res["keywords"]:
+            # 입력한 그대로 되돌아온 것("갤럭시탭 가격")은 빼고, 씨앗이 든 진짜 구매형만
+            if w.replace(" ", "") == q.replace(" ", ""):
+                continue
+            if head in w.replace(" ", "") and is_buy_intent(w) and w not in out:
+                out.append(w)
+    return out
+
+
 def get_autocomplete_expanded(seed, max_total=80):
     seed = (seed or "").strip()
     if not seed:
@@ -1180,6 +1068,9 @@ def get_autocomplete_expanded(seed, max_total=80):
                 words.append(w)
     head = seed.split()[0]
     for w in get_contrast_keywords(seed)[:5]:   # v6.41: 대비 키워드를 자음 확장보다 먼저(개수 제한에 잘리지 않게) · 5개까지(세부 글감을 덮지 않게)
+        if w not in words:
+            words.append(w)
+    for w in get_buy_keywords(seed)[:5]:   # v7.1: 구매형 키워드를 대비 다음 순서로 (구매 가이드용) · 5개까지
         if w not in words:
             words.append(w)
     for c in AC_CONSONANTS:
@@ -1673,8 +1564,9 @@ if _data:
         st.warning("세부 키워드가 안 나와요. 띄어쓰기를 바꾸거나 한 단계 넓은 말로 찾아보세요.")
     _df = pd.DataFrame(_rows).drop(columns=["_순서"])
     _df.insert(3, "비교", _df["키워드"].apply(lambda k: "⚖" if is_contrast(k) else ""))
+    _df.insert(4, "구매형", _df["키워드"].apply(lambda k: "💰" if is_buy_intent(k) else ""))   # v7.1
     if not keys:
-        _df = _df[["선택", "키워드", "비교"]]   # 키가 없으면 판정 칸 없이
+        _df = _df[["선택", "키워드", "비교", "구매형"]]   # 키가 없으면 판정 칸 없이
     _edited = st.data_editor(
         _df, key=f"main_tbl_{_data['seed']}_{len(_rows)}", hide_index=True, use_container_width=True,
         disabled=[c for c in _df.columns if c != "선택"],
@@ -1683,6 +1575,7 @@ if _data:
             "판정": st.column_config.TextColumn("판정", width="small"),
             "키워드": st.column_config.TextColumn("키워드", width="medium"),
             "비교": st.column_config.TextColumn("비교", width="small", help="⚖ = 비교·차이 키워드(A vs B)"),
+            "구매형": st.column_config.TextColumn("구매형", width="small", help="💰 = 구매의도 키워드(가격·추천·순위·후기·비교) — 제휴글 후보"),
             "월 검색": st.column_config.NumberColumn("월 검색", format="%d"),
             "경쟁 글": st.column_config.NumberColumn("경쟁 글", format="%d"),
             "비율": st.column_config.NumberColumn("비율", format="%.1f", help="경쟁 글 ÷ 월 검색 — 낮을수록 노리기 쉬워요"),
@@ -1709,6 +1602,8 @@ if _data:
             _seed_text = build_seed_text({**_base, "keyword": _main}, cat_hint_for(_cat), sub_keywords=_subs or None)
             st.code(_seed_text, language=None, wrap_lines=True)
             st.caption("오른쪽 위 📋 복사 → 생성기 '세부 설정 › 자막·참고 자료' 칸에 붙여넣기 → 키워드·서브 키워드·분야가 자동으로 채워져요.")
+            if any(is_contrast(k) or is_buy_intent(k) for k in _picked):   # v7.1
+                st.caption("⚖/💰 키워드가 있어요 → 제휴글 후보예요. 상품이 정해져 있으면 생성기 **🛒 제휴글쓰기**에서 상품을 넣어 쓰면 비교표·가격·링크 구조로 나와요.")
 
     _dc1, _dc2 = st.columns(2)
     _csv = _edited.drop(columns=["선택"]).to_csv(index=False).encode("utf-8-sig")
@@ -2204,4 +2099,4 @@ SEED_POOL = [
 
 
 st.markdown("---")
-st.caption("💡 키워드 찾기 v7.0 | 네이버 + 구글 + 데이터랩 + 트렌드 + 이번 달 글감")
+st.caption("💡 키워드 찾기 v7.1 | 네이버 + 구글 + 데이터랩 + 트렌드 + 이번 달 글감")
