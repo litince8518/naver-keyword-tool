@@ -1,9 +1,10 @@
 """
-키워드 종합 분석기 v7.2
+키워드 종합 분석기 v7.3
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + 이번 달 글감
 
 [변경 이력]
+- v7.3: (D-1020-1) 키워드 "주인공" 칸 — 웹문서 상위 10개 중 공식 기관 도메인 수(webkr display 1→10, 같은 1콜) + 뉴스 총 기사 수·최근 7일 기사(뉴스 1콜 추가)로 🏛 공식 / 📰 언론 / 📝 블로그 표시. 세부 키워드 표·여러 개 한꺼번에 표·자세히(근거 한 줄). 처음엔 표시만(판정 점수 그대로) — 노출 진단 키워드로 맞는지 확인 후 반영 결정.
 - v7.2: (D-1019-5) 왼쪽 세로 메뉴 — 사장님 "시인성이 안 좋아, 키워드 찾기랑 다른 데서 글감 찾기 항목을 왼쪽에 정렬". 사이드바에 🔍 키워드 찾기 + 보도자료·분야별 뉴스·뜨는 키워드·여러 개 한꺼번에·구글 트렌드 6개를 세로로, 고른 화면만 오른쪽에(아래 접힌 상자·가로 버튼 삭제). 키워드 찾기 화면 내용은 그대로.
 - v7.1: (D-1019-1, Muse AI 리뷰 반영) 구매의도 지원 — ① "씨앗+추천/가격/순위/후기" 자동완성 확장(대비 키워드와 같은 방식, 검색당 자동완성 +4회) ② 표에 💰 구매형 칸 + 구매형 키워드의 광고경쟁 '높음'은 "돈 되는 주제" 신호로 안내 ③ 보내기 박스에 ⚖/💰가 있으면 "제휴글 후보" 안내(제휴글쓰기는 상품을 직접 넣는 방식이라 자동 채움 안내는 안 함) ④ 죽은 코드 BLOG_PROFILES·CATEGORY_POOLS·analyze_demographics 삭제(BLOG_CHOICES는 이미 없음). ⚠ py_compile + 함수 단위 시험만.
 - v7.0: (D-1014-8) 화면 전면 개편(A안 · 한 화면) — 사장님 "너무 복잡하고 조잡해". 왼쪽 메뉴 9개를 없애고 검색창 하나로: 키워드 → 세부·롱테일 키워드 판정 표(동시 3개씩 판정) → 쓸 것 체크 → 생성기로(첫째 = 메인, 나머지 = 서브 키워드). 막막할 땐 검색창 아래 이번 달 글감 버튼. '키워드 하나 자세히'(판정 이유·상위 글·추이·뉴스·더 파기)와 '다른 데서 글감 찾기'(보도자료·분야별 뉴스·뜨는 키워드·여러 개 한꺼번에·구글 트렌드)는 접어 둠. 옛 한 번에 보기·세부 글감 파기·키워드 검증·이번 달 글감 화면은 이 한 화면으로 합쳐 삭제(⭐담아두기는 표 CSV 저장으로).
@@ -335,6 +336,39 @@ def _parse(v):
         except ValueError: return 0
     return 0
 
+# v7.3 (D-1020-1): 키워드 "주인공" 판정 — 그 검색어의 상위를 블로그가 차지하나, 공식 기관·언론이 차지하나.
+#   근거: 노출진단_2026-10-20 — 같은 정보글인데 IT 설정·문제 해결(블로그가 주인공) 23/24 노출 vs 정책·지원금(공식 기관이 주인공) 0/20.
+#   처음엔 표시만(판정 점수엔 안 넣음) — 실제 노출과 맞춰 본 뒤 반영 여부 결정.
+GOV_SUFFIXES = (".go.kr", ".or.kr", ".re.kr", ".mil.kr", "korea.kr", "gov.kr")
+OWNER_LABEL = {"gov": "🏛 공식", "news": "📰 언론", "blog": "📝 블로그", "mid": ""}
+OWNER_TIP = {
+    "gov": "🏛 정부·공공 사이트가 답하는 검색어 — 새 블로그는 어려워요. 새 제도·소문 확인·좁은 상황·직접 해 본 과정으로 좁혀 보세요.",
+    "news": "📰 지금 뉴스로 뜨는 검색어 — 빨리 쓰면 기회, 시기가 지나면 끝나요.",
+    "blog": "📝 블로그가 답하는 검색어 — 해 볼 만해요.",
+    "mid": "",
+}
+
+
+def _host(url):
+    try:
+        from urllib.parse import urlparse
+        return (urlparse(url).hostname or "").lower()
+    except Exception:
+        return ""
+
+
+def keyword_owner(gov_n, news_total, blog_total, news_recent):
+    """검색어의 주인공: gov(공식 기관 3곳 이상) / news(뉴스가 블로그 절반 이상 + 최근 7일 3건 이상) / blog / mid."""
+    news_ratio = (news_total / blog_total) if blog_total else (1.0 if news_total else 0.0)
+    if gov_n >= 3:
+        return "gov"
+    if news_ratio >= 0.5 and news_recent >= 3:
+        return "news"
+    if gov_n <= 1 and news_ratio < 0.2:
+        return "blog"
+    return "mid"
+
+
 def analyze_keyword(keyword, keys):
     keyword = keyword.strip()
     if not keyword:
@@ -380,12 +414,19 @@ def analyze_keyword(keyword, keys):
         "X-Naver-Client-Secret": keys["client_secret"],
     }
     counts = {}
+    gov_hosts = []   # v7.3: 웹문서 상위 10개 중 공식 기관 도메인
     for section in ["blog", "cafearticle", "webkr"]:
         try:
             rr = requests.get(f"https://openapi.naver.com/v1/search/{section}.json",
-                              headers=search_headers, params={"query": keyword, "display": 1}, timeout=10)
+                              headers=search_headers, params={"query": keyword, "display": 10 if section == "webkr" else 1}, timeout=10)
             rr.raise_for_status()
-            counts[section] = rr.json().get("total", 0)
+            _j = rr.json()
+            counts[section] = _j.get("total", 0)
+            if section == "webkr":
+                for _it in _j.get("items", [])[:10]:
+                    _hst = _host(_it.get("link", ""))
+                    if _hst and _hst.endswith(GOV_SUFFIXES) and _hst not in gov_hosts:
+                        gov_hosts.append(_hst)
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 401:
                 return {"keyword": keyword, "error": "검색 API 인증 실패"}
@@ -425,6 +466,26 @@ def analyze_keyword(keyword, keys):
             else: fresh = max(0, 1 - (avg_days - 30) / 335)
     except Exception: pass
     
+    # v7.3: 언론 비중·최신성 (뉴스 검색 1콜 — 총 기사 수 + 최신 10건 중 최근 7일)
+    news_total, news_recent = 0, 0
+    try:
+        rr = requests.get("https://openapi.naver.com/v1/search/news.json",
+                          headers=search_headers, params={"query": keyword, "display": 10, "sort": "date"}, timeout=10)
+        _nj = rr.json()
+        news_total = _nj.get("total", 0) or 0
+        from email.utils import parsedate_to_datetime
+        _now = datetime.now()
+        for _it in _nj.get("items", []):
+            try:
+                _d = parsedate_to_datetime(_it.get("pubDate", "")).replace(tzinfo=None)
+                if (_now - _d).days <= 7:
+                    news_recent += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    owner = keyword_owner(len(gov_hosts), news_total, counts.get("blog", 0), news_recent)
+
     blog_n = counts.get("blog", 0)
     if blog_n == 0: ratio_s = 1.0
     else:
@@ -463,6 +524,7 @@ def analyze_keyword(keyword, keys):
         },
         "related_keywords": related,
         "top_posts": top_posts,
+        "owner": owner, "gov_hosts": gov_hosts, "news_total": news_total, "news_recent": news_recent,   # v7.3
         "error": None,
     }
 
@@ -1443,12 +1505,13 @@ def run_main_search(seed, keys, stage, limit):
     rows = []
     for w in words:
         r = results.get(w)
-        row = {"선택": False, "판정": "—", "키워드": w, "월 검색": None, "경쟁 글": None, "비율": None, "_순서": -999}
+        row = {"선택": False, "판정": "—", "키워드": w, "월 검색": None, "경쟁 글": None, "비율": None, "주인공": "", "_순서": -999}
         if r and not r.get("error"):
             v = judge_keyword(r, stage)
             s = r.get("monthly_search") or 0
             row.update({"판정": GRADE_LABEL[v["grade"]], "월 검색": s, "경쟁 글": r.get("blog_count"),
                         "비율": round(r["blog_count"] / s, 1) if s else None,
+                        "주인공": OWNER_LABEL.get(r.get("owner", "mid"), ""),
                         "_순서": GRADE_RANK[v["grade"]] * 100 + v["points"]})
         elif r:
             row["판정"] = "⚪ 자료 없음"
@@ -1477,6 +1540,11 @@ def render_detail(kw, res, keys, stage):
         m4.metric("상위 글 평균", f"{res['avg_days']}일 전" if res.get("avg_days") is not None else "—")
         m4.caption(f"최근 30일 글 {res.get('recent_30d', 0)}개")
         st.info(one_action_tip(res, v["grade"]))
+        _ow = res.get("owner", "mid")   # v7.3
+        if OWNER_TIP.get(_ow):
+            _gh = res.get("gov_hosts") or []
+            st.caption(OWNER_TIP[_ow] + f"  (웹문서 상위 10개 중 공식 기관 {len(_gh)}곳" + (": " + ", ".join(_gh[:4]) if _gh else "")
+                       + f" · 뉴스 {res.get('news_total', 0):,}건, 최근 7일 {res.get('news_recent', 0)}건)")
         st.markdown("**왜 이 판정인가요?**")
         for rsn in v["reasons"]:
             st.markdown("- " + rsn)
@@ -1587,6 +1655,7 @@ if SIDE_MENU == MENU_MAIN:   # v7.2: 왼쪽 메뉴에서 "키워드 찾기"를 �
                 "월 검색": st.column_config.NumberColumn("월 검색", format="%d"),
                 "경쟁 글": st.column_config.NumberColumn("경쟁 글", format="%d"),
                 "비율": st.column_config.NumberColumn("비율", format="%.1f", help="경쟁 글 ÷ 월 검색 — 낮을수록 노리기 쉬워요"),
+            "주인공": st.column_config.TextColumn("주인공", width="small", help="이 검색어 상위를 누가 차지하나 — 🏛 공식 기관(새 블로그 어려움) · 📰 언론(시기 승부) · 📝 블로그(해 볼 만함)"),
             },
         )
         _picked = _edited.loc[_edited["선택"], "키워드"].tolist()
@@ -1831,6 +1900,8 @@ if EXTRA_MENU == "📋 여러 개 한꺼번에":
                               "모바일%": f"{r['mobile_ratio']*100:.0f}%",
                               "노출점수": r["exposure_score"],
                               "난이도": f"{r['difficulty_emoji']} {r['difficulty']}",
+                              "주인공": OWNER_LABEL.get(r.get("owner", "mid"), ""),   # v7.3
+                              "공식기관": len(r.get("gov_hosts") or []), "뉴스": r.get("news_total", 0),
                           })
                   df = pd.DataFrame(df_data)
                   st.success(f"✅ {len(results)}개 분석 완료")
@@ -2104,4 +2175,4 @@ SEED_POOL = [
 
 
 st.markdown("---")
-st.caption("💡 키워드 찾기 v7.2 | 네이버 + 구글 + 데이터랩 + 트렌드 + 이번 달 글감")
+st.caption("💡 키워드 찾기 v7.3 | 네이버 + 구글 + 데이터랩 + 트렌드 + 이번 달 글감")
