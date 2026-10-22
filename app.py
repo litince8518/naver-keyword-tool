@@ -1,9 +1,10 @@
 """
-키워드 종합 분석기 v7.3
+키워드 종합 분석기 v7.4
 ====================
-네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴 + 이번 달 글감
+네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
 
 [변경 이력]
+- v7.4: (D-1022-2) 화면 다듬기 — 사장님 "거북이버프 도구 수준 UI, 누구나 쓰는 도구 느낌". Pretendard 글꼴·파랑 한 색·흰 카드·알약 버튼. 결과 표(data_editor) → 카드 목록(체크 상자 + 키워드 + 숫자 한 줄 + 판정 알약 배지·한 줄 설명 + ⚖/💰/주인공 꼬리표). 숫자 줄에 "1위 시 하루 약 N명"(월 검색×20%÷30, 계산만). 이번 달 글감 버튼·데이터(MONTHLY_TOPICS) 삭제. 시험: AppTest 4종 오류 0(검증/apptest_v7·nokey는 카드 체크 상자로 고침).
 - v7.3: (D-1020-1) 키워드 "주인공" 칸 — 웹문서 상위 10개 중 공식 기관 도메인 수(webkr display 1→10, 같은 1콜) + 뉴스 총 기사 수·최근 7일 기사(뉴스 1콜 추가)로 🏛 공식 / 📰 언론 / 📝 블로그 표시. 세부 키워드 표·여러 개 한꺼번에 표·자세히(근거 한 줄). 처음엔 표시만(판정 점수 그대로) — 노출 진단 키워드로 맞는지 확인 후 반영 결정.
 - v7.2: (D-1019-5) 왼쪽 세로 메뉴 — 사장님 "시인성이 안 좋아, 키워드 찾기랑 다른 데서 글감 찾기 항목을 왼쪽에 정렬". 사이드바에 🔍 키워드 찾기 + 보도자료·분야별 뉴스·뜨는 키워드·여러 개 한꺼번에·구글 트렌드 6개를 세로로, 고른 화면만 오른쪽에(아래 접힌 상자·가로 버튼 삭제). 키워드 찾기 화면 내용은 그대로.
 - v7.1: (D-1019-1, Muse AI 리뷰 반영) 구매의도 지원 — ① "씨앗+추천/가격/순위/후기" 자동완성 확장(대비 키워드와 같은 방식, 검색당 자동완성 +4회) ② 표에 💰 구매형 칸 + 구매형 키워드의 광고경쟁 '높음'은 "돈 되는 주제" 신호로 안내 ③ 보내기 박스에 ⚖/💰가 있으면 "제휴글 후보" 안내(제휴글쓰기는 상품을 직접 넣는 방식이라 자동 채움 안내는 안 함) ④ 죽은 코드 BLOG_PROFILES·CATEGORY_POOLS·analyze_demographics 삭제(BLOG_CHOICES는 이미 없음). ⚠ py_compile + 함수 단위 시험만.
@@ -53,6 +54,8 @@ import requests
 import time
 import hmac
 import hashlib
+import re
+import html
 import base64
 import math
 import json
@@ -62,18 +65,72 @@ st.set_page_config(page_title="키워드 찾기", page_icon="🔍", layout="wide
 
 st.markdown("""
 <style>
+    /* v7.4 (D-1022-2): 화면 다듬기 — 사장님 "거북이버프 도구 수준의 UI". 기능·판정 그대로, 겉모습만.
+       글꼴 Pretendard · 파랑 한 색 · 넓은 여백 · 흰 카드+옅은 그림자 · 알약 버튼 */
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
     :root{
-        --accent:#4f46e5; --accent-2:#6366f1; --accent-strong:#4338ca;
-        --accent-soft:#eef2ff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb;
+        --accent:#2f6bff; --accent-2:#5b8cff; --accent-strong:#1f4fd6;
+        --accent-soft:#eef3ff; --ink:#0f172a; --muted:#64748b; --line:#e6e9ef;
+        --bg:#f6f7f9; --card:#ffffff; --shadow:0 1px 2px rgba(15,23,42,.04),0 6px 20px rgba(15,23,42,.06);
     }
+    html, body, [class*="css"], .stApp, .stMarkdown, button, input, textarea, select{
+        font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif !important; }
+    .stApp{ background:var(--bg); }
     /* ---------- 메인 영역 ---------- */
-    .block-container{ padding-top:2.2rem; }
-    .main-header{ font-size:2rem; font-weight:800; letter-spacing:-.02em; color:var(--ink);
-        margin:0 0 .15rem; display:flex; align-items:center; gap:.5rem; }
-    .subtitle{ color:var(--muted); margin-bottom:1.6rem; font-size:.98rem; }
+    .block-container{ padding-top:2.6rem; max-width:1100px; }
+    .eyebrow{ color:var(--accent); font-weight:700; font-size:.85rem; letter-spacing:.02em; margin-bottom:.35rem; }
+    .main-header{ font-size:2.35rem; font-weight:800; letter-spacing:-.03em; color:var(--ink);
+        margin:0 0 .4rem; line-height:1.2; }
+    .subtitle{ color:var(--muted); margin-bottom:1.8rem; font-size:1rem; }
+    h3, h4{ letter-spacing:-.02em; color:var(--ink); }
+
+    /* ---------- 카드: 찾기 폼 · 테두리 상자 · 펼침 ---------- */
+    [data-testid="stForm"], [data-testid="stVerticalBlockBorderWrapper"]{
+        background:var(--card); border:1px solid var(--line) !important; border-radius:16px !important;
+        box-shadow:var(--shadow); padding:1.1rem 1.2rem !important; }
+    [data-testid="stExpander"] details{ background:var(--card); border:1px solid var(--line); border-radius:14px; }
+    [data-testid="stExpander"] summary{ font-weight:600; }
+
+    /* ---------- 입력칸 ---------- */
+    [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea{
+        border-radius:12px !important; font-size:1rem !important; }
+    [data-testid="stTextInput"] div[data-baseweb="input"]{ min-height:48px; border-radius:12px; border-color:var(--line); background:#fff; }
+    div[data-baseweb="select"] > div{ min-height:48px; border-radius:12px; }
+
+    /* ---------- 버튼 ---------- */
+    .stButton>button, .stFormSubmitButton>button, .stDownloadButton>button{
+        border-radius:12px !important; font-weight:600; border:1px solid var(--line); background:#fff; color:var(--ink);
+        min-height:42px; line-height:1.35; padding:.45rem .8rem; transition:all .12s; }
+    .stButton>button p{ font-size:.92rem; word-break:keep-all; }
+    .stButton>button:hover, .stFormSubmitButton>button:hover{ border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+    button[kind="primary"], button[kind="primaryFormSubmit"], [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"]{
+        background:var(--accent) !important; border-color:var(--accent) !important; color:#fff !important;
+        min-height:48px; border-radius:999px !important; box-shadow:0 4px 12px rgba(47,107,255,.25); }
+    button[kind="primary"]:hover, button[kind="primaryFormSubmit"]:hover, [data-testid="stBaseButton-primary"]:hover,
+    [data-testid="stBaseButton-primaryFormSubmit"]:hover{ background:var(--accent-strong) !important; color:#fff !important; }
+
+    /* ---------- 표 ---------- */
+    [data-testid="stDataFrame"], [data-testid="stDataEditor"]{ border-radius:14px; overflow:hidden; border:1px solid var(--line);
+        box-shadow:var(--shadow); background:#fff; }
+    [data-testid="stMetric"]{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:.8rem 1rem; box-shadow:var(--shadow); }
+    [data-testid="stCaptionContainer"]{ color:var(--muted); }
+
+    /* ---------- 결과 카드 목록 (v7.4) ---------- */
+    .kw-name{ font-weight:700; font-size:1.02rem; color:var(--ink); line-height:1.4; }
+    .kw-tag{ display:inline-block; margin-left:.4rem; padding:.05rem .45rem; border-radius:999px; font-size:.72rem; font-weight:600;
+        background:#f1f5f9; color:#475569; vertical-align:middle; }
+    .kw-meta{ color:var(--muted); font-size:.84rem; margin-top:.15rem; }
+    .kw-meta b{ color:var(--ink); }
+    .kw-judge{ text-align:right; }
+    .pill{ display:inline-block; padding:.2rem .7rem; border-radius:999px; font-size:.8rem; font-weight:700; }
+    .pill-ok{ background:#e8f7ee; color:#16803c; } .pill-mid{ background:#fff6e0; color:#a16207; } .pill-no{ background:#fdecec; color:#c62828; }
+    .kw-hint{ color:var(--muted); font-size:.74rem; margin-top:.25rem; line-height:1.35; }
+    .kw-sep{ border-top:1px solid #eef0f4; margin:.15rem 0; }
+    /* 체크 상자도 파랑(기본 빨강 대신) — 배포는 app.py 하나라 테마 파일 대신 CSS로 */
+    [data-testid="stCheckbox"] label:has(input:checked) > span:first-child{ background-color:var(--accent) !important; border-color:var(--accent) !important; }
 
     /* ---------- 사이드바 뼈대 ---------- */
-    section[data-testid="stSidebar"]{ background:#fbfbfd; border-right:1px solid var(--line); }
+    section[data-testid="stSidebar"]{ background:#ffffff; border-right:1px solid var(--line); }
     section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"]{
         display:flex; flex-direction:column; min-height:calc(100vh - 3.5rem); padding-top:.4rem; }
     section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] > div:first-child{
@@ -101,7 +158,7 @@ st.markdown("""
         background:var(--accent-soft); color:var(--accent-strong); }
     section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child{ display:none; }
     section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked){
-        background:var(--accent); box-shadow:0 1px 3px rgba(79,70,229,.35); }
+        background:var(--accent); box-shadow:0 4px 12px rgba(47,107,255,.25); }
     section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) *{ color:#fff !important; }
 
     /* ---------- 상태 배지 ---------- */
@@ -185,7 +242,7 @@ if not st.session_state.api_configured and not st.session_state.keys_loaded_from
         st.session_state.keys_loaded_from_browser = True
         components.html(load_keys_html, height=0)
 
-st.markdown('<div class="main-header">🔍 키워드 찾기</div>', unsafe_allow_html=True)
+st.markdown('<div class="eyebrow">네이버 실제 숫자로 판정</div><div class="main-header">키워드 찾기</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">키워드 하나 넣으면 → 세부 키워드와 판정 → 쓸 것만 골라 생성기로</div>', unsafe_allow_html=True)
 
 
@@ -1393,54 +1450,6 @@ def one_action_tip(res, grade):
     return "🟢 바로 쓰기 좋아요! 표에서 체크하고 생성기로 보내세요."
 
 
-# ============ 이번 달 글감 데이터 (v6.39 · D-1007-3 — v7.0부터 검색창 아래 버튼) ============
-# 사장님 "키워드가 어렵다 — 무엇을 쓸지 떠올리는 게 막힌다" → 글감 샘 3개(달력·이어쓰기·오늘 내 살림) 중
-# 달력과 이어쓰기를 화면으로. 글감은 '주제 씨앗'일 뿐 — 판정은 실측(검색량·문서수·비율)으로.
-MONTHLY_TOPICS = {
-    1:  {"세탁": ["패딩 세탁", "니트 정전기", "수건 쉰내"], "청소": ["결로 곰팡이", "창틀 물기", "가습기 청소"],
-         "주방": ["떡국떡 보관", "귤 보관법", "냉동실 정리"], "가전": ["전기장판 전기요금", "온수매트 물 교체", "가습기 세척"],
-         "생활비": ["난방비 절약", "연말정산 준비", "관리비 줄이기"], "차": ["겨울 타이어 공기압", "차 배터리 방전", "와이퍼 결빙"]},
-    2:  {"세탁": ["패딩 보관 전 세탁", "롱패딩 냄새", "이불 세탁 주기"], "청소": ["욕실 곰팡이", "현관 신발장 냄새", "베란다 결로"],
-         "주방": ["설 음식 보관", "남은 전 냉동", "기름때 청소"], "가전": ["가습기 끄고 보관", "공기청정기 필터", "전기밥솥 냄새"],
-         "생활비": ["연말정산 환급 조회", "새학기 준비물", "통신비 절약"], "차": ["명절 장거리 점검", "차 실내 습기", "블랙박스 배터리"]},
-    3:  {"세탁": ["겨울옷 정리 세탁", "니트 보관법", "운동화 세탁"], "청소": ["미세먼지 창문 청소", "대청소 순서", "방충망 청소"],
-         "주방": ["봄나물 손질", "딸기 보관법", "냉장고 정리"], "가전": ["공기청정기 필터 교체", "에어컨 미리 점검", "청소기 먼지통"],
-         "생활비": ["새학기 비용 줄이기", "봄 이사 체크리스트", "자동차세 연납"], "차": ["봄 세차 송진", "황사 후 세차", "타이어 교체 시기"]},
-    4:  {"세탁": ["황사 빨래 실내건조", "이불 커버 교체", "흰 운동화 얼룩"], "청소": ["꽃가루 창틀 청소", "베란다 물청소", "커튼 세탁"],
-         "주방": ["두릅 손질", "도시락 반찬 보관", "식초 활용 청소"], "가전": ["에어컨 필터 청소", "선풍기 꺼내기 전 청소", "제습기 점검"],
-         "생활비": ["종합소득세 준비", "가정의 달 지출 계획", "보험료 점검"], "차": ["꽃가루 세차", "에어컨 필터 교체", "봄 나들이 차량 점검"]},
-    5:  {"세탁": ["여름 이불 세탁", "땀 얼룩 제거", "린넨 관리"], "청소": ["욕실 환기", "실리콘 곰팡이", "주방 후드 청소"],
-         "주방": ["매실청 담그기", "마늘 보관법", "도시락 상하지 않게"], "가전": ["에어컨 첫 가동 점검", "냉장고 온도 설정", "음식물 처리기"],
-         "생활비": ["종합소득세 신고", "근로장려금 신청", "가정의 달 선물비"], "차": ["에어컨 냄새 제거", "선팅 고르기", "장거리 졸음 예방"]},
-    6:  {"세탁": ["장마철 빨래 냄새", "제습기 빨래 건조", "곰팡이 핀 옷"], "청소": ["장마 곰팡이 예방", "신발장 습기", "욕실 배수구 냄새"],
-         "주방": ["장마철 쌀 보관", "음식 쉽게 상할 때", "도마 곰팡이"], "가전": ["제습기 전기요금", "에어컨 제습 모드", "선풍기 소음"],
-         "생활비": ["여름 전기요금 누진제", "휴가비 아끼기", "자동차보험 갱신"], "차": ["장마철 와이퍼", "차 유리 김서림", "침수 차량 확인"]},
-    7:  {"세탁": ["땀 냄새 빨래", "수영복 세탁", "흰 티 누런 얼룩"], "청소": ["초파리 없애기", "음식물 쓰레기 냄새", "에어컨 냄새"],
-         "주방": ["수박 보관법", "냉장고 파먹기", "여름 반찬 보관"], "가전": ["에어컨 전기요금 줄이기", "에어컨 곰팡이", "냉장고 성에"],
-         "생활비": ["여름휴가 경비", "전기요금 감면", "방학 식비"], "차": ["여름 차 안 온도", "타이어 공기압 여름", "블랙박스 고장"]},
-    8:  {"세탁": ["여름옷 보관 세탁", "운동화 냄새", "베개 세탁"], "청소": ["벌레 퇴치", "베란다 배수구", "곰팡이 얼룩 제거"],
-         "주방": ["복숭아 보관", "남은 수박 활용", "냉동 과일 보관"], "가전": ["에어컨 끄기 전 송풍", "제습기 보관", "정수기 청소"],
-         "생활비": ["추석 선물 준비", "2학기 학원비", "전기요금 고지서 확인"], "차": ["휴가 후 차 점검", "차 실내 냄새", "엔진오일 교체 주기"]},
-    9:  {"세탁": ["여름옷 정리 보관", "이불 교체 세탁", "니트 꺼내기 전 관리"], "청소": ["에어컨 청소 후 보관", "환절기 먼지", "방충망 정리"],
-         "주방": ["추석 음식 보관", "남은 전 활용", "햇밤 보관"], "가전": ["에어컨 커버 보관", "가습기 꺼내기", "선풍기 보관"],
-         "생활비": ["추석 장보기 아끼기", "명절 교통비", "가을 이사 준비"], "차": ["명절 귀성 점검", "타이어 마모 확인", "차 에어컨 곰팡이"]},
-    10: {"세탁": ["차렵이불 세탁", "여름옷 누런 얼룩", "니트 보풀"], "청소": ["환절기 결로 예방", "방충망 떼기 전 청소", "욕실 실리콘 곰팡이"],
-         "주방": ["햅쌀 보관", "고구마 보관법", "밤 삶는 법"], "가전": ["전기장판 꺼낼 때 점검", "가습기 첫 세척", "제습기 넣기 전 정리"],
-         "생활비": ["보일러 틀기 전 점검", "겨울 난방비 줄이기", "에너지바우처"], "차": ["타이어 공기압 기온", "겨울 대비 점검", "워셔액 교체"]},
-    11: {"세탁": ["패딩 꺼내 세탁", "전기장판 세탁", "겨울 이불 세탁"], "청소": ["창문 단열", "결로 곰팡이", "보일러 배관 점검"],
-         "주방": ["김장 준비", "절임배추 보관", "무 보관법"], "가전": ["온수매트 처음 쓸 때", "전기히터 전기요금", "가습기 청소 주기"],
-         "생활비": ["난방비 지원", "연말정산 미리보기", "김장 비용"], "차": ["겨울 타이어", "부동액 점검", "성에 제거"]},
-    12: {"세탁": ["패딩 세탁 주기", "수면바지 보풀", "목도리 세탁"], "청소": ["연말 대청소", "결로 물기 닦기", "현관 외풍"],
-         "주방": ["귤 보관법", "김장김치 보관", "연말 모임 음식 보관"], "가전": ["난방 텐트", "전기장판 화재 예방", "가습기 세균"],
-         "생활비": ["연말정산 공제 챙기기", "관리비 난방비", "자동차세 연납 신청"], "차": ["눈길 운전", "차 배터리 겨울", "와이퍼 교체"]},
-}
-FOLLOWUP_HINTS = ["원인", "해결", "주의할 점", "하는 법", "비용", "언제"]
-
-
-def _kst_month():
-    return (datetime.utcnow() + timedelta(hours=9)).month
-
-
 # ============ v7.0 화면: 🔍 키워드 찾기 (A안 · 한 화면, D-1014-8) ============
 # 사장님 "너무 복잡하고 조잡해 — 사용자 친화적으로" → 메뉴 9개를 한 화면으로.
 # 흐름: 키워드 하나 → 세부·롱테일 키워드 판정 표 → 쓸 것 체크 → 생성기로(첫째 = 메인, 나머지 = 서브).
@@ -1593,10 +1602,10 @@ if SIDE_MENU == MENU_MAIN:   # v7.2: 왼쪽 메뉴에서 "키워드 찾기"를 �
     # ── ① 검색창 (엔터로도 찾기) ──
     _sv = st.query_params.get("stage", "")
     with st.form("main_search", clear_on_submit=False):
-        fc1, fc2, fc3 = st.columns([6, 1.7, 1.3])
+        fc1, fc2, fc3 = st.columns([5.2, 2.6, 1.3])
         in_kw = fc1.text_input("키워드", key="main_kw_input", placeholder="키워드 하나 — 예: 제습기", label_visibility="collapsed")
         in_stage = fc2.selectbox("내 블로그", STAGE_OPTIONS, index=(STAGE_OPTIONS.index(_sv) if _sv in STAGE_OPTIONS else 0),
-                                 key="main_stage", label_visibility="collapsed", format_func=lambda s: f"{s} 블로그",
+                                 key="main_stage", label_visibility="collapsed", format_func=lambda s: f"{s} 블로그" if len(s) <= 2 else s,
                                  help="신규 = 아직 작은 블로그. '기존'이면 더 큰 키워드도 추천으로 나와요.")
         go = fc3.form_submit_button("찾기", type="primary", use_container_width=True)
     st.query_params["stage"] = in_stage
@@ -1604,22 +1613,6 @@ if SIDE_MENU == MENU_MAIN:   # v7.2: 왼쪽 메뉴에서 "키워드 찾기"를 �
         st.session_state["main_pending"] = in_kw.strip()
         st.session_state["main_path"] = [in_kw.strip()]
         st.session_state["main_limit"] = 25
-
-    # ── 막막할 때: 이번 달 글감 ──
-    _cur_m = _kst_month()
-    _mt = MONTHLY_TOPICS[_cur_m]
-    st.caption(f"막막하면 — {_cur_m}월 글감 (누르면 바로 찾아요)")
-    _firsts = [items[0] for items in _mt.values()]
-    _cc = st.columns(len(_firsts))
-    for _i, _t in enumerate(_firsts):
-        _cc[_i].button(_t, key=f"mt_chip_{_i}", on_click=_start_search, args=(_t,), use_container_width=True)
-    with st.expander(f"{_cur_m}월 글감 더 보기"):
-        _ec = st.columns(3)
-        for _i, (_cat, _items) in enumerate(_mt.items()):
-            with _ec[_i % 3]:
-                st.markdown(f"**{_cat}**")
-                for _j, _t in enumerate(_items):
-                    st.button(_t, key=f"mt_more_{_i}_{_j}", on_click=_start_search, args=(_t,), use_container_width=True)
 
     # ── ② 찾기 실행 ──
     _pending = st.session_state.pop("main_pending", None)
@@ -1643,28 +1636,51 @@ if SIDE_MENU == MENU_MAIN:   # v7.2: 왼쪽 메뉴에서 "키워드 찾기"를 �
         _df.insert(4, "구매형", _df["키워드"].apply(lambda k: "💰" if is_buy_intent(k) else ""))   # v7.1
         if not keys:
             _df = _df[["선택", "키워드", "비교", "구매형"]]   # 키가 없으면 판정 칸 없이
-        _edited = st.data_editor(
-            _df, key=f"main_tbl_{_data['seed']}_{len(_rows)}", hide_index=True, use_container_width=True,
-            disabled=[c for c in _df.columns if c != "선택"],
-            column_config={
-                "선택": st.column_config.CheckboxColumn("쓸 것", width="small"),
-                "판정": st.column_config.TextColumn("판정", width="small"),
-                "키워드": st.column_config.TextColumn("키워드", width="medium"),
-                "비교": st.column_config.TextColumn("비교", width="small", help="⚖ = 비교·차이 키워드(A vs B)"),
-                "구매형": st.column_config.TextColumn("구매형", width="small", help="💰 = 구매의도 키워드(가격·추천·순위·후기·비교) — 제휴글 후보"),
-                "월 검색": st.column_config.NumberColumn("월 검색", format="%d"),
-                "경쟁 글": st.column_config.NumberColumn("경쟁 글", format="%d"),
-                "비율": st.column_config.NumberColumn("비율", format="%.1f", help="경쟁 글 ÷ 월 검색 — 낮을수록 노리기 쉬워요"),
-            "주인공": st.column_config.TextColumn("주인공", width="small", help="이 검색어 상위를 누가 차지하나 — 🏛 공식 기관(새 블로그 어려움) · 📰 언론(시기 승부) · 📝 블로그(해 볼 만함)"),
-            },
-        )
-        _picked = _edited.loc[_edited["선택"], "키워드"].tolist()
+        # v7.4 (D-1022-2): 표(data_editor) → 카드 목록. 사장님 "거북이버프 도구 수준 UI" — 판정 알약 배지 + 줄마다 한 줄 설명 + 숫자 한 줄.
+        # "1위 시 하루 ~N명" = 월 검색 × 20% ÷ 30 (거북이 검색량 조회기와 같은 어림셈, 계산만이라 속도 영향 없음).
+        _HINT = {"합격": "글이 적어 쓰기 좋아요",
+                 "보통": "더 구체적으로 좁혀 보세요",
+                 "불합격": "글이 많거나 찾는 사람이 적어요"}
+        _CLS = {"합격": "ok", "보통": "mid", "불합격": "no"}
+        _picked = []
+        _sid = re.sub(r"\W", "", _data["seed"])[:20] + f"_{len(_rows)}"
+        with st.container(border=True):
+            for _i, _r in enumerate(_rows):
+                _res = _data["results"].get(_r["키워드"]) or {}
+                _g = None
+                if keys and _res and not _res.get("error"):
+                    _g = judge_keyword(_res, in_stage)["grade"]
+                _tags = []
+                if is_contrast(_r["키워드"]): _tags.append("⚖ 비교")
+                if is_buy_intent(_r["키워드"]): _tags.append("💰 구매형")
+                if _r.get("주인공"): _tags.append(_r["주인공"])
+                _meta = ""
+                if _g:
+                    _s = _r["월 검색"] or 0
+                    _day = round(_s * 0.2 / 30)
+                    _meta = (f"월 검색 <b>{_s:,}</b> · 경쟁 글 {(_r['경쟁 글'] or 0):,} · 비율 {_r['비율'] if _r['비율'] is not None else '—'}"
+                             f" · 1위 시 하루 약 <b>{_day:,}명</b>")
+                elif keys:
+                    _meta = "판정 자료가 없어요 (검색량이 아주 적거나 너무 긴 말)"
+                _c1, _c2, _c3 = st.columns([0.45, 6.2, 2.2], vertical_alignment="center")
+                if _c1.checkbox("쓸 것", key=f"pk_{_sid}_{_i}", label_visibility="collapsed"):
+                    _picked.append(_r["키워드"])
+                _c2.markdown(
+                    f'<div class="kw-row"><div class="kw-name">{html.escape(_r["키워드"])}'
+                    + "".join(f'<span class="kw-tag">{html.escape(t)}</span>' for t in _tags) + "</div>"
+                    + (f'<div class="kw-meta">{_meta}</div>' if _meta else "") + "</div>", unsafe_allow_html=True)
+                if _g:
+                    _c3.markdown(f'<div class="kw-judge"><span class="pill pill-{_CLS[_g]}">{GRADE_LABEL[_g][2:]}</span>'
+                                 f'<div class="kw-hint">{_HINT[_g]}</div></div>', unsafe_allow_html=True)
+                if _i < len(_rows) - 1:
+                    st.markdown('<div class="kw-sep"></div>', unsafe_allow_html=True)
+        _edited = _df
         if keys:
-            st.caption("🟢 추천부터 보세요. 비율이 낮을수록(1 안팎) 찾는 사람에 비해 글이 적어요.")
+            st.caption("추천부터 보세요. 비율이 낮을수록(1 안팎) 찾는 사람에 비해 글이 적어요. 「1위 시 하루」는 월 검색의 20%로 어림한 숫자예요.")
 
         with st.container(border=True):
             if not _picked:
-                st.markdown("**✍️ 생성기로 보내기** — 위 표에서 쓸 키워드를 체크하세요. 첫째 = 메인 키워드, 나머지 = 서브 키워드.")
+                st.markdown("**✍️ 생성기로 보내기** — 위 목록에서 쓸 키워드를 체크하세요. 첫째 = 메인 키워드, 나머지 = 서브 키워드.")
             else:
                 _main, _subs = _picked[0], _picked[1:]
                 st.markdown(f"**✍️ 생성기로 보내기** — 메인 **{_main}**" + (f" · 서브 {', '.join(_subs)}" if _subs else ""))
@@ -2175,4 +2191,4 @@ SEED_POOL = [
 
 
 st.markdown("---")
-st.caption("💡 키워드 찾기 v7.3 | 네이버 + 구글 + 데이터랩 + 트렌드 + 이번 달 글감")
+st.caption("💡 키워드 찾기 v7.4 | 네이버 + 구글 + 데이터랩 + 트렌드")
