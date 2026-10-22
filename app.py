@@ -1,9 +1,10 @@
 """
-키워드 종합 분석기 v7.4
+키워드 종합 분석기 v7.5
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
 
 [변경 이력]
+- v7.5: (D-1022-6) 세부 키워드 가져오는 곳 고르기 — 검색창 아래 "자동완성(사람들이 실제로 치는 말, 기본) / 연관 키워드(검색광고 도구, 더 넓게·키 필요)". 사장님 "연관검색어는 사라진 거야?" → 자동완성이 기본이 되면서 연관어는 실패할 때만 나왔음. 결과 제목 옆에 어디서 가져왔는지 표시. 키 없으면 연관 키워드는 자동완성으로 대신.
 - v7.4: (D-1022-2) 화면 다듬기 — 사장님 "거북이버프 도구 수준 UI, 누구나 쓰는 도구 느낌". Pretendard 글꼴·파랑 한 색·흰 카드·알약 버튼. 결과 표(data_editor) → 카드 목록(체크 상자 + 키워드 + 숫자 한 줄 + 판정 알약 배지·한 줄 설명 + ⚖/💰/주인공 꼬리표). 숫자 줄에 "1위 시 하루 약 N명"(월 검색×20%÷30, 계산만). 이번 달 글감 버튼·데이터(MONTHLY_TOPICS) 삭제. 시험: AppTest 4종 오류 0(검증/apptest_v7·nokey는 카드 체크 상자로 고침).
 - v7.3: (D-1020-1) 키워드 "주인공" 칸 — 웹문서 상위 10개 중 공식 기관 도메인 수(webkr display 1→10, 같은 1콜) + 뉴스 총 기사 수·최근 7일 기사(뉴스 1콜 추가)로 🏛 공식 / 📰 언론 / 📝 블로그 표시. 세부 키워드 표·여러 개 한꺼번에 표·자세히(근거 한 줄). 처음엔 표시만(판정 점수 그대로) — 노출 진단 키워드로 맞는지 확인 후 반영 결정.
 - v7.2: (D-1019-5) 왼쪽 세로 메뉴 — 사장님 "시인성이 안 좋아, 키워드 찾기랑 다른 데서 글감 찾기 항목을 왼쪽에 정렬". 사이드바에 🔍 키워드 찾기 + 보도자료·분야별 뉴스·뜨는 키워드·여러 개 한꺼번에·구글 트렌드 6개를 세로로, 고른 화면만 오른쪽에(아래 접힌 상자·가로 버튼 삭제). 키워드 찾기 화면 내용은 그대로.
@@ -307,6 +308,7 @@ with st.sidebar:
     # ---- v7.2 (D-1019-5): 왼쪽 세로 메뉴 — 사장님 "시인성이 안 좋아, 키워드 찾기랑 다른 데서 글감 찾기 항목을 왼쪽에"
     #      (v7.0은 메뉴 없이 한 화면 + 아래 접힌 상자였음 → 접힌 상자 안 가로 버튼이 잘 안 보임) ----
     MENU_MAIN = "🔍 키워드 찾기"
+    SRC_OPTIONS = ["자동완성", "연관 키워드"]   # v7.5
     EXTRA_MENUS = ["📰 보도자료", "🗞️ 분야별 뉴스", "🔥 뜨는 키워드", "📋 여러 개 한꺼번에", "📈 구글 트렌드"]
     st.markdown('<div class="side-label">메뉴</div>', unsafe_allow_html=True)
     SIDE_MENU = st.radio("메뉴", [MENU_MAIN] + EXTRA_MENUS, key="side_menu", label_visibility="collapsed")
@@ -1489,9 +1491,9 @@ def _analyze_retry(kw, keys):
     return r
 
 
-def run_main_search(seed, keys, stage, limit):
-    """씨앗 → 세부 키워드 수집(자동완성 자음 확장 + 대비) → 판정 → 표 행."""
-    sub = collect_sub_keywords(seed, keys, limit=limit)
+def run_main_search(seed, keys, stage, limit, prefer_related=False):
+    """씨앗 → 세부 키워드 수집(자동완성 자음 확장 + 대비, v7.5: 또는 검색광고 연관 키워드) → 판정 → 표 행."""
+    sub = collect_sub_keywords(seed, keys, limit=limit, prefer_related=bool(prefer_related and keys))
     words, seen = [seed], {seed.replace(" ", "")}
     for w in (sub.get("keywords") or []):
         if w.replace(" ", "") not in seen:
@@ -1608,6 +1610,9 @@ if SIDE_MENU == MENU_MAIN:   # v7.2: 왼쪽 메뉴에서 "키워드 찾기"를 �
                                  key="main_stage", label_visibility="collapsed", format_func=lambda s: f"{s} 블로그" if len(s) <= 2 else s,
                                  help="신규 = 아직 작은 블로그. '기존'이면 더 큰 키워드도 추천으로 나와요.")
         go = fc3.form_submit_button("찾기", type="primary", use_container_width=True)
+        # v7.5 (D-1022-6): 세부 키워드를 어디서 가져올지
+        in_src = st.radio("세부 키워드 가져오기", SRC_OPTIONS, horizontal=True, key="main_src",
+                          help="자동완성 = 사람들이 검색창에 실제로 치는 긴 말(기본). 연관 키워드 = 네이버 검색광고 도구가 묶어 주는 말 — 더 넓게 나오고 API 키가 있어야 해요.")
     st.query_params["stage"] = in_stage
     if go and in_kw.strip():
         st.session_state["main_pending"] = in_kw.strip()
@@ -1618,7 +1623,10 @@ if SIDE_MENU == MENU_MAIN:   # v7.2: 왼쪽 메뉴에서 "키워드 찾기"를 �
     _pending = st.session_state.pop("main_pending", None)
     if _pending:
         with st.spinner(f"'{_pending}' 세부 키워드 모으는 중…"):
-            st.session_state["main_data"] = run_main_search(_pending, keys, in_stage, st.session_state.get("main_limit", 25))
+            st.session_state["main_data"] = run_main_search(_pending, keys, in_stage, st.session_state.get("main_limit", 25),
+                                                            prefer_related=(st.session_state.get("main_src") == "연관 키워드"))
+        if st.session_state.get("main_src") == "연관 키워드" and not keys:
+            st.caption("🔑 연관 키워드는 API 키가 있어야 해서 자동완성으로 가져왔어요.")
 
     # ── ③ 결과 표 → 체크 → 생성기로 ──
     _data = st.session_state.get("main_data")
@@ -1629,6 +1637,8 @@ if SIDE_MENU == MENU_MAIN:   # v7.2: 왼쪽 메뉴에서 "키워드 찾기"를 �
             st.caption("🧭 " + "  ›  ".join(_path))
         _n_ok = sum(1 for r in _rows if r["판정"].startswith("🟢"))
         st.markdown(f"#### '{_data['seed']}' 세부 키워드 {len(_rows)}개" + (f" · 🟢 추천 {_n_ok}개" if keys else ""))
+        if _data.get("source"):
+            st.caption(f"가져온 곳: {_data['source']}")
         if len(_rows) <= 1 and _data.get("error"):
             st.warning("세부 키워드가 안 나와요. 띄어쓰기를 바꾸거나 한 단계 넓은 말로 찾아보세요.")
         _df = pd.DataFrame(_rows).drop(columns=["_순서"])
@@ -2191,4 +2201,4 @@ SEED_POOL = [
 
 
 st.markdown("---")
-st.caption("💡 키워드 찾기 v7.4 | 네이버 + 구글 + 데이터랩 + 트렌드")
+st.caption("💡 키워드 찾기 v7.5 | 네이버 + 구글 + 데이터랩 + 트렌드")
