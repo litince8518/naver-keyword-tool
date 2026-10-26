@@ -1,9 +1,10 @@
 """
-키워드 종합 분석기 v7.5
+키워드 종합 분석기 v7.6
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
 
 [변경 이력]
+- v7.6: (D-1027-1) 🗂️ 블로그 운영실 메뉴 — 사장님 "릴스 속 운영실 같은 걸 내 블로그용으로". 블로그 아이디 → 네이버 블로그 RSS(키·로그인 불필요, 최근 50개)로 글 목록 → ① 검색 누락: 제목 그대로 블로그 검색(글당 검색 API 1콜, 동시 3개) 상위 30개 안에 내 글이 있나 ✅/❌/⏳(발행 2일 안) ② 카테고리별 글 수·마지막 글, 최근 7·30일 글 수·평균 간격·가장 오래 쉰 때 ③ 겹치는 글: 제목 낱말+태그 겹침(블로그 글 20% 넘게 붙은 공통 태그는 뺌). 방문자·유입 검색어는 네이버 API가 없어 안 함.
 - v7.5: (D-1022-6) 세부 키워드 가져오는 곳 고르기 — 검색창 아래 "자동완성(사람들이 실제로 치는 말, 기본) / 연관 키워드(검색광고 도구, 더 넓게·키 필요)". 사장님 "연관검색어는 사라진 거야?" → 자동완성이 기본이 되면서 연관어는 실패할 때만 나왔음. 결과 제목 옆에 어디서 가져왔는지 표시. 키 없으면 연관 키워드는 자동완성으로 대신.
 - v7.4: (D-1022-2) 화면 다듬기 — 사장님 "거북이버프 도구 수준 UI, 누구나 쓰는 도구 느낌". Pretendard 글꼴·파랑 한 색·흰 카드·알약 버튼. 결과 표(data_editor) → 카드 목록(체크 상자 + 키워드 + 숫자 한 줄 + 판정 알약 배지·한 줄 설명 + ⚖/💰/주인공 꼬리표). 숫자 줄에 "1위 시 하루 약 N명"(월 검색×20%÷30, 계산만). 이번 달 글감 버튼·데이터(MONTHLY_TOPICS) 삭제. 시험: AppTest 4종 오류 0(검증/apptest_v7·nokey는 카드 체크 상자로 고침).
 - v7.3: (D-1020-1) 키워드 "주인공" 칸 — 웹문서 상위 10개 중 공식 기관 도메인 수(webkr display 1→10, 같은 1콜) + 뉴스 총 기사 수·최근 7일 기사(뉴스 1콜 추가)로 🏛 공식 / 📰 언론 / 📝 블로그 표시. 세부 키워드 표·여러 개 한꺼번에 표·자세히(근거 한 줄). 처음엔 표시만(판정 점수 그대로) — 노출 진단 키워드로 맞는지 확인 후 반영 결정.
@@ -309,7 +310,7 @@ with st.sidebar:
     #      (v7.0은 메뉴 없이 한 화면 + 아래 접힌 상자였음 → 접힌 상자 안 가로 버튼이 잘 안 보임) ----
     MENU_MAIN = "🔍 키워드 찾기"
     SRC_OPTIONS = ["자동완성", "연관 키워드"]   # v7.5
-    EXTRA_MENUS = ["📰 보도자료", "🗞️ 분야별 뉴스", "🔥 뜨는 키워드", "📋 여러 개 한꺼번에", "📈 구글 트렌드"]
+    EXTRA_MENUS = ["🗂️ 블로그 운영실", "📰 보도자료", "🗞️ 분야별 뉴스", "🔥 뜨는 키워드", "📋 여러 개 한꺼번에", "📈 구글 트렌드"]
     st.markdown('<div class="side-label">메뉴</div>', unsafe_allow_html=True)
     SIDE_MENU = st.radio("메뉴", [MENU_MAIN] + EXTRA_MENUS, key="side_menu", label_visibility="collapsed")
     if SIDE_MENU == MENU_MAIN:
@@ -2196,9 +2197,236 @@ SEED_POOL = [
 ]
 
 
+# ================================================
+# v7.6 (D-1027-1): 🗂️ 블로그 운영실 — 내 네이버 블로그 최근 글(RSS) → ① 검색 누락 ② 카테고리·발행 간격 ③ 겹치는 글
+#   네이버 블로그는 방문자·유입 통계 API가 없음 → "내 글이 검색에 보이나"까지만 자동. RSS는 최근 50개까지만 줌.
+# ================================================
+OPS_STOP = {"방법", "정리", "총정리", "사용법", "이유", "확인", "가이드", "해결", "설정", "기준", "신청", "신청방법",
+            "정보", "비교", "추천", "후기", "차이", "대상", "조건", "금액", "자격", "한눈", "한눈에", "가지", "3가지",
+            "5가지", "확인할", "있는", "하는", "위한", "진짜", "전부", "모음", "대처법", "시점", "경우", "제외", "기간", "방식"}
 
 
+def _now_kst():
+    return datetime.utcnow() + timedelta(hours=9)   # 서버(Streamlit Cloud)는 UTC — RSS 날짜는 한국 시간
+
+
+def parse_blog_id(s):
+    s = (s or "").strip()
+    m = re.search(r"blog\.naver\.com/([A-Za-z0-9_-]+)", s)
+    return m.group(1) if m else re.sub(r"[^A-Za-z0-9_-]", "", s)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_blog_posts(blog_id):
+    """네이버 블로그 RSS(로그인·키 불필요) → 최근 글 최대 50개. 반환: {"name", "posts"} 또는 {"error"}."""
+    import xml.etree.ElementTree as ET
+    from email.utils import parsedate_to_datetime
+    try:
+        r = requests.get(f"https://rss.blog.naver.com/{blog_id}.xml", headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        r.raise_for_status()
+        ch = ET.fromstring(r.content).find("channel")
+    except Exception:
+        ch = None
+    if ch is None:
+        return {"error": f"'{blog_id}' 블로그 글 목록을 못 가져왔어요 — 아이디를 확인해 주세요."}
+    posts = []
+    for it in ch.findall("item"):
+        link = (it.findtext("guid") or it.findtext("link") or "").split("?")[0]
+        m = re.search(r"/(\d{6,})$", link)
+        try:
+            d = parsedate_to_datetime(it.findtext("pubDate") or "").replace(tzinfo=None)
+        except Exception:
+            d = None
+        posts.append({
+            "title": html.unescape((it.findtext("title") or "").strip()),
+            "link": link, "log_no": m.group(1) if m else "", "date": d,
+            "category": (it.findtext("category") or "").strip() or "(없음)",
+            "tags": [t.strip() for t in (it.findtext("tag") or "").split(",") if t.strip()],
+        })
+    name = (ch.findtext("title") or "").strip()
+    if not name and not posts:   # 없는 아이디도 200 + 빈 channel로 옴
+        return {"error": f"'{blog_id}' 블로그를 찾지 못했어요 — 아이디를 확인해 주세요."}
+    return {"name": name or blog_id, "posts": posts}
+
+
+def check_in_search(post, blog_id, keys):
+    """제목 그대로 블로그 검색(검색 API 1콜) → 상위 30개 안 내 글 순위. 0 = 안 보임, None = 확인 실패."""
+    q = re.sub(r"\s+", " ", re.sub(r"[\"'“”‘’!?~]", " ", post["title"])).strip()
+    try:
+        rr = requests.get("https://openapi.naver.com/v1/search/blog.json",
+                          headers={"X-Naver-Client-Id": keys["client_id"], "X-Naver-Client-Secret": keys["client_secret"]},
+                          params={"query": q, "display": 30, "sort": "sim"}, timeout=10)
+        rr.raise_for_status()
+        items = rr.json().get("items", [])
+    except Exception:
+        return None
+    for i, it in enumerate(items, 1):
+        lk = it.get("link", "")
+        if post["log_no"] and post["log_no"] in lk:
+            return i
+        if not post["log_no"] and f"/{blog_id}/".lower() in lk.lower() and _strip_tags(it.get("title", "")) == post["title"]:
+            return i
+    return 0
+
+
+def search_status(rank, post):
+    if rank is None:
+        return "⚠ 확인 실패"
+    if rank:
+        return f"✅ 보임 ({rank}위)"
+    if post["date"] and (_now_kst() - post["date"]).days < 2:
+        return "⏳ 기다리는 중"
+    return "❌ 안 보임"
+
+
+def _ops_tokens(post):
+    words = set()
+    for w in re.findall(r"[0-9A-Za-z가-힣]+", post["title"].lower()):
+        if len(w) > 2:
+            w = re.sub(r"(으로|에서|에게|까지|부터|은|는|이|가|을|를|의|와|과|도|로|에)$", "", w)
+        words.add(w)
+    words |= {t.lower() for t in post["tags"]}
+    return {w for w in words if len(w) >= 2 and w not in OPS_STOP and not w.isdigit()}
+
+
+def find_overlaps(posts, limit=15):
+    """제목 낱말 + 태그가 겹치는 글 쌍. 블로그 글 20% 넘게 붙은 공통 태그(꿀팁·생활정보 등)는 뺌."""
+    toks = [_ops_tokens(p) for p in posts]
+    df = {}
+    for t in toks:
+        for w in t:
+            df[w] = df.get(w, 0) + 1
+    common = {w for w, c in df.items() if len(posts) >= 10 and c / len(posts) > 0.2}
+    out = []
+    for i in range(len(posts)):
+        for j in range(i + 1, len(posts)):
+            a, b = toks[i] - common, toks[j] - common
+            shared = a & b
+            score = len(shared) / max(1, len(a | b))
+            if len(shared) >= 2 and score >= 0.12:
+                out.append((score, posts[i], posts[j], sorted(shared)))
+    out.sort(key=lambda x: -x[0])
+    return out[:limit]
+
+
+def blog_rhythm(posts):
+    """발행 간격 — 최근 7일·30일 글 수, 평균 간격, 가장 긴 공백, 마지막 글 며칠 전."""
+    ds = sorted([p["date"] for p in posts if p["date"]], reverse=True)
+    now = _now_kst()
+    r = {"n7": sum(1 for d in ds if (now - d).days < 7), "n30": sum(1 for d in ds if (now - d).days < 30),
+         "last_days": (now - ds[0]).days if ds else None, "avg_gap": None, "max_gap": None}
+    if len(ds) >= 2:
+        gaps = [((ds[i] - ds[i + 1]).total_seconds() / 86400, ds[i + 1], ds[i]) for i in range(len(ds) - 1)]
+        r["avg_gap"] = sum(g[0] for g in gaps) / len(gaps)
+        r["max_gap"] = max(gaps, key=lambda g: g[0])
+    return r
+
+
+if EXTRA_MENU == "🗂️ 블로그 운영실":
+  with EXTRA_BOX:
+      st.markdown("#### 🗂️ 블로그 운영실")
+      st.caption("내 네이버 블로그 최근 글(최대 50개)을 불러와 ① 검색에 잡혔는지 ② 카테고리·발행 간격 ③ 주제가 겹치는 글을 봐요. "
+                 "글 목록은 키 없이 되고, ①만 네이버 키가 필요해요. 방문자·유입 검색어는 네이버가 API를 안 줘서 못 가져와요.")
+      with st.form("ops_form", clear_on_submit=False):
+          oc1, oc2 = st.columns([5, 1.3])
+          ops_in = oc1.text_input("블로그 아이디", value=st.query_params.get("blog", ""), key="ops_blog_input",
+                                  placeholder="블로그 아이디 — 예: blog.naver.com/ioneteam 이면 ioneteam", label_visibility="collapsed")
+          ops_go = oc2.form_submit_button("불러오기", type="primary", use_container_width=True)
+      if ops_go:
+          _bid = parse_blog_id(ops_in)
+          if _bid:
+              st.query_params["blog"] = _bid
+              st.session_state["ops_blog"] = _bid
+              fetch_blog_posts.clear()
+          else:
+              st.warning("블로그 아이디를 넣어 주세요")
+      if "ops_blog" not in st.session_state and st.query_params.get("blog"):
+          st.session_state["ops_blog"] = st.query_params.get("blog")
+
+      ops_bid = st.session_state.get("ops_blog")
+      if ops_bid:
+          with st.spinner("글 목록 가져오는 중..."):
+              ops_data = fetch_blog_posts(ops_bid)
+          if ops_data.get("error"):
+              st.error(ops_data["error"])
+          elif not ops_data["posts"]:
+              st.warning("가져온 글이 없어요 — 공개 글이 있는지 확인해 주세요.")
+          else:
+              ops_posts = ops_data["posts"]
+              rh = blog_rhythm(ops_posts)
+              st.markdown(f"**{ops_data['name']}** · blog.naver.com/{ops_bid}")
+              m1, m2, m3, m4 = st.columns(4)
+              m1.metric("불러온 글", f"{len(ops_posts)}개")
+              m2.metric("최근 7일 / 30일", f"{rh['n7']} / {rh['n30']}편")
+              m3.metric("평균 간격", f"{rh['avg_gap']:.1f}일" if rh["avg_gap"] is not None else "-")
+              m4.metric("마지막 글", f"{rh['last_days']}일 전" if rh["last_days"] is not None else "-")
+
+              ot1, ot2, ot3 = st.tabs(["🔎 검색 누락", "📂 카테고리·발행 간격", "🔁 겹치는 글"])
+
+              with ot1:
+                  _keys, _ = get_active_keys()
+                  _checked = st.session_state.get("ops_check", {}).get(ops_bid)
+                  if _keys is None:
+                      st.info("🔑 검색 확인은 네이버 키가 있어야 해요 — 왼쪽 **⚙️ API 설정**.")
+                  else:
+                      st.caption("글 제목 그대로 블로그 검색했을 때 상위 30개 안에 내 글이 있는지 봐요. "
+                                 "❌가 며칠째 그대로면 검색 누락일 수 있어요(발행 2일 안 된 글은 ⏳).")
+                      if st.button(f"🔎 검색 확인 (글 {len(ops_posts)}개 · 검색 {len(ops_posts)}회)", type="primary", key="ops_check_btn"):
+                          from concurrent.futures import ThreadPoolExecutor
+                          with st.spinner("검색해 보는 중..."):
+                              with ThreadPoolExecutor(max_workers=3) as ex:
+                                  _ranks = list(ex.map(lambda p: check_in_search(p, ops_bid, _keys), ops_posts))
+                          _checked = {p["link"]: rk for p, rk in zip(ops_posts, _ranks)}
+                          st.session_state.setdefault("ops_check", {})[ops_bid] = _checked
+                  _rows = []
+                  for p in ops_posts:
+                      row = {"날짜": p["date"].strftime("%m-%d") if p["date"] else "", "카테고리": p["category"],
+                             "제목": p["title"], "주소": p["link"]}
+                      if _checked is not None:
+                          row = {"검색": search_status(_checked.get(p["link"]), p), **row}
+                      _rows.append(row)
+                  if _checked is not None:
+                      _cnt = {}
+                      for r in _rows:
+                          _k = r["검색"][0]
+                          _cnt[_k] = _cnt.get(_k, 0) + 1
+                      st.markdown(f"✅ 보임 **{_cnt.get('✅', 0)}** · ❌ 안 보임 **{_cnt.get('❌', 0)}** · "
+                                  f"⏳ 기다리는 중 **{_cnt.get('⏳', 0)}** · ⚠ 실패 **{_cnt.get('⚠', 0)}**")
+                      _order = {"❌": 0, "⚠": 1, "⏳": 2, "✅": 3}
+                      _rows.sort(key=lambda r: _order.get(r["검색"][0], 9))
+                  st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True,
+                               column_config={"주소": st.column_config.LinkColumn("주소", display_text="열기", width="small")})
+
+              with ot2:
+                  _cats = {}
+                  for p in ops_posts:
+                      c = _cats.setdefault(p["category"], {"카테고리": p["category"], "글 수": 0, "_last": None})
+                      c["글 수"] += 1
+                      if p["date"] and (c["_last"] is None or p["date"] > c["_last"]):
+                          c["_last"] = p["date"]
+                  _now = _now_kst()
+                  _crow = [{"카테고리": c["카테고리"], "글 수": c["글 수"],
+                            "마지막 글": c["_last"].strftime("%Y-%m-%d") if c["_last"] else "",
+                            "며칠 전": (_now - c["_last"]).days if c["_last"] else None}
+                           for c in sorted(_cats.values(), key=lambda c: -c["글 수"])]
+                  st.dataframe(pd.DataFrame(_crow), hide_index=True, use_container_width=True)
+                  if rh["max_gap"]:
+                      g, d0, d1 = rh["max_gap"]
+                      st.caption(f"가장 오래 쉰 때: {d0.strftime('%m-%d')} → {d1.strftime('%m-%d')} ({g:.0f}일) · "
+                                 f"불러온 {len(ops_posts)}편 기준(RSS는 최근 50개까지만 줘요)")
+
+              with ot3:
+                  _ov = find_overlaps(ops_posts)
+                  if not _ov:
+                      st.success("주제가 겹치는 글이 없어요")
+                  else:
+                      st.caption("제목 낱말·태그가 많이 겹치는 글이에요. 같은 키워드를 노렸다면 서로 순위를 나눠 먹을 수 있어요 — "
+                                 "하나로 합치거나 각도를 다르게. 주제만 비슷하고 키워드가 다르면 괜찮아요.")
+                      for score, a, b, shared in _ov:
+                          with st.container(border=True):
+                              st.markdown(f"[{a['title']}]({a['link']})  \n↔ [{b['title']}]({b['link']})")
+                              st.caption("겹치는 말: " + " · ".join(shared))
 
 
 st.markdown("---")
-st.caption("💡 키워드 찾기 v7.5 | 네이버 + 구글 + 데이터랩 + 트렌드")
+st.caption("💡 키워드 찾기 v7.6 | 네이버 + 구글 + 데이터랩 + 트렌드")
