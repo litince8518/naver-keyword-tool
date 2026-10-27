@@ -1,9 +1,10 @@
 """
-키워드 종합 분석기 v7.6
+키워드 종합 분석기 v7.7
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
 
 [변경 이력]
+- v7.7: (D-1027-2) 블로그 운영실에 "구글 블로그" — 글 목록 = Blogger 피드(키 불필요, 최대 500개) / 서치콘솔 연결(Secrets [gsc] site·key_json, 서비스 계정 읽기 전용) → ① 🔎 색인 상태: URL 검사 API(구글이 직접 알려 주는 색인 여부·마지막 크롤링, 하루 2,000회) + "검사 열기"로 서치콘솔에서 색인 요청 ② 📈 노출·클릭: 최근 28일 글별 노출·클릭·평균 순위·대표 검색어·직전 28일 대비 클릭 변화. 서비스 계정 로그인(RS256 서명)은 부품 없이 직접 — openssl 서명과 같은지 확인. 카테고리·겹치는 글은 네이버와 공통(구글은 라벨).
 - v7.6: (D-1027-1) 🗂️ 블로그 운영실 메뉴 — 사장님 "릴스 속 운영실 같은 걸 내 블로그용으로". 블로그 아이디 → 네이버 블로그 RSS(키·로그인 불필요, 최근 50개)로 글 목록 → ① 검색 누락: 제목 그대로 블로그 검색(글당 검색 API 1콜, 동시 3개) 상위 30개 안에 내 글이 있나 ✅/❌/⏳(발행 2일 안) ② 카테고리별 글 수·마지막 글, 최근 7·30일 글 수·평균 간격·가장 오래 쉰 때 ③ 겹치는 글: 제목 낱말+태그 겹침(블로그 글 20% 넘게 붙은 공통 태그는 뺌). 방문자·유입 검색어는 네이버 API가 없어 안 함.
 - v7.5: (D-1022-6) 세부 키워드 가져오는 곳 고르기 — 검색창 아래 "자동완성(사람들이 실제로 치는 말, 기본) / 연관 키워드(검색광고 도구, 더 넓게·키 필요)". 사장님 "연관검색어는 사라진 거야?" → 자동완성이 기본이 되면서 연관어는 실패할 때만 나왔음. 결과 제목 옆에 어디서 가져왔는지 표시. 키 없으면 연관 키워드는 자동완성으로 대신.
 - v7.4: (D-1022-2) 화면 다듬기 — 사장님 "거북이버프 도구 수준 UI, 누구나 쓰는 도구 느낌". Pretendard 글꼴·파랑 한 색·흰 카드·알약 버튼. 결과 표(data_editor) → 카드 목록(체크 상자 + 키워드 + 숫자 한 줄 + 판정 알약 배지·한 줄 설명 + ⚖/💰/주인공 꼬리표). 숫자 줄에 "1위 시 하루 약 N명"(월 검색×20%÷30, 계산만). 이번 달 글감 버튼·데이터(MONTHLY_TOPICS) 삭제. 시험: AppTest 4종 오류 0(검증/apptest_v7·nokey는 카드 체크 상자로 고침).
@@ -2322,31 +2323,215 @@ def blog_rhythm(posts):
     return r
 
 
+# ── v7.7 (D-1027-2): 구글 블로그(서치콘솔) — 서비스 계정 열쇠는 Streamlit Secrets [gsc]에만. 부품(google-auth) 없이 RS256 서명 직접 ──
+def _der_read(b, i):
+    """DER 한 칸 읽기 → (태그, 내용, 다음 위치)."""
+    tag, ln = b[i], b[i + 1]
+    i += 2
+    if ln & 0x80:
+        nb = ln & 0x7F
+        ln = int.from_bytes(b[i:i + nb], "big")
+        i += nb
+    return tag, b[i:i + ln], i + ln
+
+
+def _rsa_key_from_pem(pem):
+    """PKCS#8 'BEGIN PRIVATE KEY'(구글 서비스 계정 키 형식) → (n, d)."""
+    body = "".join(l for l in pem.strip().splitlines() if "-----" not in l)
+    der = base64.b64decode(body)
+    _, seq, _ = _der_read(der, 0)                 # PrivateKeyInfo
+    i = 0
+    _, _, i = _der_read(seq, i)                   # version
+    _, _, i = _der_read(seq, i)                   # 알고리즘(rsaEncryption)
+    _, rsa, _ = _der_read(seq, i)                 # OCTET STRING → RSAPrivateKey
+    _, rseq, _ = _der_read(rsa, 0)
+    nums, j = [], 0
+    while j < len(rseq) and len(nums) < 4:        # version, n, e, d
+        _, v, j = _der_read(rseq, j)
+        nums.append(int.from_bytes(v, "big"))
+    return nums[1], nums[3]
+
+
+def _rs256(msg, pem):
+    n, d = _rsa_key_from_pem(pem)
+    k = (n.bit_length() + 7) // 8
+    t = bytes.fromhex("3031300d060960864801650304020105000420") + hashlib.sha256(msg).digest()
+    em = b"\x00\x01" + b"\xff" * (k - len(t) - 3) + b"\x00" + t
+    return pow(int.from_bytes(em, "big"), d, n).to_bytes(k, "big")
+
+
+def _b64url(b):
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def gsc_config():
+    """Secrets [gsc] → {"site", "key"} 또는 None."""
+    try:
+        sec = st.secrets.get("gsc")
+        if sec and sec.get("site") and sec.get("key_json"):
+            return {"site": sec["site"].strip(), "key": json.loads(sec["key_json"])}
+    except Exception:
+        pass
+    return None
+
+
+def gsc_token(cfg):
+    """서비스 계정 → 구글 접근 토큰(1시간). 세션에 보관."""
+    tk = st.session_state.get("gsc_token")
+    if tk and tk[1] > time.time() + 60:
+        return tk[0]
+    key = cfg["key"]
+    now = int(time.time())
+    head = _b64url(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
+    claim = _b64url(json.dumps({"iss": key["client_email"], "scope": "https://www.googleapis.com/auth/webmasters.readonly",
+                                "aud": key.get("token_uri", "https://oauth2.googleapis.com/token"),
+                                "iat": now, "exp": now + 3600}).encode())
+    sig = _b64url(_rs256(f"{head}.{claim}".encode(), key["private_key"]))
+    r = requests.post(key.get("token_uri", "https://oauth2.googleapis.com/token"),
+                      data={"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": f"{head}.{claim}.{sig}"}, timeout=15)
+    if r.status_code != 200:
+        raise RuntimeError(f"구글 로그인 실패 ({r.status_code}): {r.text[:200]}")
+    st.session_state["gsc_token"] = (r.json()["access_token"], now + int(r.json().get("expires_in", 3600)))
+    return st.session_state["gsc_token"][0]
+
+
+def _norm_url(u):
+    u = (u or "").split("#")[0].split("?")[0].strip()
+    return re.sub(r"^http://", "https://", u).lower()
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_blogger_posts(host):
+    """구글 블로그(Blogger) 글 피드(키 불필요, 최대 500개) → 운영실 글 모양."""
+    try:
+        r = requests.get(f"https://{host}/feeds/posts/summary", params={"alt": "json", "max-results": 500},
+                         headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        r.raise_for_status()
+        feed = r.json()["feed"]
+    except Exception:
+        return {"error": f"'{host}' 블로그 글 목록을 못 가져왔어요 — 주소를 확인해 주세요."}
+    posts = []
+    for e in feed.get("entry", []):
+        link = next((l["href"] for l in e.get("link", []) if l.get("rel") == "alternate"), "")
+        labels = [c.get("term", "") for c in e.get("category", []) if c.get("term")]
+        try:
+            d = datetime.strptime(e["published"]["$t"][:19], "%Y-%m-%dT%H:%M:%S")
+        except Exception:
+            d = None
+        posts.append({"title": html.unescape(e.get("title", {}).get("$t", "").strip()), "link": link, "log_no": "",
+                      "date": d, "category": labels[0] if labels else "(없음)", "tags": labels})
+    return {"name": feed.get("title", {}).get("$t", host), "posts": posts}
+
+
+def gsc_page_stats(cfg, days=28):
+    """서치콘솔 실적: 글(page)별 노출·클릭·평균 순위 + 대표 검색어, 직전 같은 기간 클릭. 데이터는 3일쯤 늦게 들어옴."""
+    from urllib.parse import quote
+    tok = gsc_token(cfg)
+    url = f"https://searchconsole.googleapis.com/webmasters/v3/sites/{quote(cfg['site'], safe='')}/searchAnalytics/query"
+    hdr = {"Authorization": f"Bearer {tok}"}
+    end = (_now_kst() - timedelta(days=3)).date()
+    start, pend = end - timedelta(days=days - 1), end - timedelta(days=days)
+    pstart = pend - timedelta(days=days - 1)
+
+    def q(s, e, dims, limit):
+        r = requests.post(url, headers=hdr, json={"startDate": str(s), "endDate": str(e), "dimensions": dims, "rowLimit": limit}, timeout=20)
+        if r.status_code != 200:
+            raise RuntimeError(f"서치콘솔 실적 오류 ({r.status_code}): {r.text[:200]}")
+        return r.json().get("rows", [])
+
+    out = {}
+    for row in q(start, end, ["page"], 1000):
+        u = _norm_url(row["keys"][0])
+        o = out.setdefault(u, {"노출": 0, "클릭": 0, "_pos": 0.0, "전 클릭": 0, "검색어": ""})
+        o["노출"] += row.get("impressions", 0)
+        o["클릭"] += row.get("clicks", 0)
+        o["_pos"] += row.get("position", 0) * row.get("impressions", 0)
+    for row in q(pstart, pend, ["page"], 1000):
+        u = _norm_url(row["keys"][0])
+        out.setdefault(u, {"노출": 0, "클릭": 0, "_pos": 0.0, "전 클릭": 0, "검색어": ""})["전 클릭"] += row.get("clicks", 0)
+    best = {}
+    for row in q(start, end, ["page", "query"], 5000):
+        u = _norm_url(row["keys"][0])
+        if row.get("impressions", 0) > best.get(u, (0, ""))[0]:
+            best[u] = (row["impressions"], row["keys"][1])
+    for u, o in out.items():
+        o["순위"] = round(o["_pos"] / o["노출"], 1) if o["노출"] else None
+        o["검색어"] = best.get(u, (0, ""))[1]
+    return {"rows": out, "range": f"{start.strftime('%m-%d')}~{end.strftime('%m-%d')}"}
+
+
+def gsc_inspect(cfg, url):
+    """URL 검사(구글이 직접 알려 주는 색인 상태). 하루 2,000회까지."""
+    try:
+        r = requests.post("https://searchconsole.googleapis.com/v1/urlInspection/index:inspect",
+                          headers={"Authorization": f"Bearer {gsc_token(cfg)}"},
+                          json={"inspectionUrl": url, "siteUrl": cfg["site"], "languageCode": "ko-KR"}, timeout=20)
+        if r.status_code != 200:
+            return {"verdict": "ERR", "state": f"확인 실패 ({r.status_code})", "crawl": ""}
+        ir = r.json().get("inspectionResult", {}).get("indexStatusResult", {})
+        return {"verdict": ir.get("verdict", ""), "state": ir.get("coverageState", ""), "crawl": (ir.get("lastCrawlTime") or "")[:10]}
+    except Exception:
+        return {"verdict": "ERR", "state": "확인 실패", "crawl": ""}
+
+
+def gsc_inspect_link(site, url):
+    from urllib.parse import quote
+    return f"https://search.google.com/search-console/inspect?resource_id={quote(site, safe='')}&id={quote(url, safe='')}"
+
+
+def render_ops_common(ops_posts):
+    """카테고리·발행 간격 / 겹치는 글 — 네이버·구글 공통."""
+    _cats = {}
+    for p in ops_posts:
+        c = _cats.setdefault(p["category"], {"카테고리": p["category"], "글 수": 0, "_last": None})
+        c["글 수"] += 1
+        if p["date"] and (c["_last"] is None or p["date"] > c["_last"]):
+            c["_last"] = p["date"]
+    _now = _now_kst()
+    return [{"카테고리": c["카테고리"], "글 수": c["글 수"],
+             "마지막 글": c["_last"].strftime("%Y-%m-%d") if c["_last"] else "",
+             "며칠 전": (_now - c["_last"]).days if c["_last"] else None}
+            for c in sorted(_cats.values(), key=lambda c: -c["글 수"])]
+
+
 if EXTRA_MENU == "🗂️ 블로그 운영실":
   with EXTRA_BOX:
       st.markdown("#### 🗂️ 블로그 운영실")
-      st.caption("내 네이버 블로그 최근 글(최대 50개)을 불러와 ① 검색에 잡혔는지 ② 카테고리·발행 간격 ③ 주제가 겹치는 글을 봐요. "
-                 "글 목록은 키 없이 되고, ①만 네이버 키가 필요해요. 방문자·유입 검색어는 네이버가 API를 안 줘서 못 가져와요.")
+      OPS_PLATFORMS = ["네이버 블로그", "구글 블로그"]
+      _pv = st.query_params.get("ops_pf", "")
+      ops_pf = st.radio("블로그 종류", OPS_PLATFORMS, horizontal=True, key="ops_platform", label_visibility="collapsed",
+                        index=OPS_PLATFORMS.index(_pv) if _pv in OPS_PLATFORMS else 0)
+      st.query_params["ops_pf"] = ops_pf
+      _naver = ops_pf == "네이버 블로그"
+      if _naver:
+          st.caption("내 네이버 블로그 최근 글(최대 50개)을 불러와 ① 검색에 잡혔는지 ② 카테고리·발행 간격 ③ 주제가 겹치는 글을 봐요. "
+                     "글 목록은 키 없이 되고, ①만 네이버 키가 필요해요. 방문자·유입 검색어는 네이버가 API를 안 줘서 못 가져와요.")
+      else:
+          st.caption("구글 블로그 글 전체를 불러와 ① 구글 색인 상태 ② 노출·클릭·검색어 ③ 카테고리·발행 간격 ④ 겹치는 글을 봐요. "
+                     "①②는 서치콘솔 연결(Secrets [gsc])이 필요해요.")
+      _qk = "blog" if _naver else "gblog"
       with st.form("ops_form", clear_on_submit=False):
           oc1, oc2 = st.columns([5, 1.3])
-          ops_in = oc1.text_input("블로그 아이디", value=st.query_params.get("blog", ""), key="ops_blog_input",
-                                  placeholder="블로그 아이디 — 예: blog.naver.com/ioneteam 이면 ioneteam", label_visibility="collapsed")
+          ops_in = oc1.text_input("블로그 주소", value=st.query_params.get(_qk, "" if _naver else "www.litince.kr"),
+                                  key=f"ops_in_{_qk}", label_visibility="collapsed",
+                                  placeholder=("블로그 아이디 — 예: blog.naver.com/ioneteam 이면 ioneteam" if _naver else "블로그 주소 — 예: www.litince.kr"))
           ops_go = oc2.form_submit_button("불러오기", type="primary", use_container_width=True)
+      _sk = f"ops_sel_{_qk}"
       if ops_go:
-          _bid = parse_blog_id(ops_in)
+          _bid = parse_blog_id(ops_in) if _naver else re.sub(r"^https?://|/.*$", "", ops_in.strip())
           if _bid:
-              st.query_params["blog"] = _bid
-              st.session_state["ops_blog"] = _bid
-              fetch_blog_posts.clear()
+              st.query_params[_qk] = _bid
+              st.session_state[_sk] = _bid
+              (fetch_blog_posts if _naver else fetch_blogger_posts).clear()
           else:
-              st.warning("블로그 아이디를 넣어 주세요")
-      if "ops_blog" not in st.session_state and st.query_params.get("blog"):
-          st.session_state["ops_blog"] = st.query_params.get("blog")
+              st.warning("블로그 주소를 넣어 주세요")
+      if _sk not in st.session_state and st.query_params.get(_qk):
+          st.session_state[_sk] = st.query_params.get(_qk)
 
-      ops_bid = st.session_state.get("ops_blog")
+      ops_bid = st.session_state.get(_sk)
       if ops_bid:
           with st.spinner("글 목록 가져오는 중..."):
-              ops_data = fetch_blog_posts(ops_bid)
+              ops_data = fetch_blog_posts(ops_bid) if _naver else fetch_blogger_posts(ops_bid)
           if ops_data.get("error"):
               st.error(ops_data["error"])
           elif not ops_data["posts"]:
@@ -2354,66 +2539,122 @@ if EXTRA_MENU == "🗂️ 블로그 운영실":
           else:
               ops_posts = ops_data["posts"]
               rh = blog_rhythm(ops_posts)
-              st.markdown(f"**{ops_data['name']}** · blog.naver.com/{ops_bid}")
+              st.markdown(f"**{ops_data['name']}** · " + (f"blog.naver.com/{ops_bid}" if _naver else ops_bid))
               m1, m2, m3, m4 = st.columns(4)
               m1.metric("불러온 글", f"{len(ops_posts)}개")
               m2.metric("최근 7일 / 30일", f"{rh['n7']} / {rh['n30']}편")
               m3.metric("평균 간격", f"{rh['avg_gap']:.1f}일" if rh["avg_gap"] is not None else "-")
               m4.metric("마지막 글", f"{rh['last_days']}일 전" if rh["last_days"] is not None else "-")
 
-              ot1, ot2, ot3 = st.tabs(["🔎 검색 누락", "📂 카테고리·발행 간격", "🔁 겹치는 글"])
-
-              with ot1:
-                  _keys, _ = get_active_keys()
-                  _checked = st.session_state.get("ops_check", {}).get(ops_bid)
-                  if _keys is None:
-                      st.info("🔑 검색 확인은 네이버 키가 있어야 해요 — 왼쪽 **⚙️ API 설정**.")
-                  else:
-                      st.caption("글 제목 그대로 블로그 검색했을 때 상위 30개 안에 내 글이 있는지 봐요. "
-                                 "❌가 며칠째 그대로면 검색 누락일 수 있어요(발행 2일 안 된 글은 ⏳).")
-                      if st.button(f"🔎 검색 확인 (글 {len(ops_posts)}개 · 검색 {len(ops_posts)}회)", type="primary", key="ops_check_btn"):
-                          from concurrent.futures import ThreadPoolExecutor
-                          with st.spinner("검색해 보는 중..."):
-                              with ThreadPoolExecutor(max_workers=3) as ex:
-                                  _ranks = list(ex.map(lambda p: check_in_search(p, ops_bid, _keys), ops_posts))
-                          _checked = {p["link"]: rk for p, rk in zip(ops_posts, _ranks)}
-                          st.session_state.setdefault("ops_check", {})[ops_bid] = _checked
-                  _rows = []
-                  for p in ops_posts:
-                      row = {"날짜": p["date"].strftime("%m-%d") if p["date"] else "", "카테고리": p["category"],
-                             "제목": p["title"], "주소": p["link"]}
+              if _naver:
+                  ot1, ot2, ot3 = st.tabs(["🔎 검색 누락", "📂 카테고리·발행 간격", "🔁 겹치는 글"])
+                  with ot1:
+                      _keys, _ = get_active_keys()
+                      _checked = st.session_state.get("ops_check", {}).get(ops_bid)
+                      if _keys is None:
+                          st.info("🔑 검색 확인은 네이버 키가 있어야 해요 — 왼쪽 **⚙️ API 설정**.")
+                      else:
+                          st.caption("글 제목 그대로 블로그 검색했을 때 상위 30개 안에 내 글이 있는지 봐요. "
+                                     "❌가 며칠째 그대로면 검색 누락일 수 있어요(발행 2일 안 된 글은 ⏳).")
+                          if st.button(f"🔎 검색 확인 (글 {len(ops_posts)}개 · 검색 {len(ops_posts)}회)", type="primary", key="ops_check_btn"):
+                              from concurrent.futures import ThreadPoolExecutor
+                              with st.spinner("검색해 보는 중..."):
+                                  with ThreadPoolExecutor(max_workers=3) as ex:
+                                      _ranks = list(ex.map(lambda p: check_in_search(p, ops_bid, _keys), ops_posts))
+                              _checked = {p["link"]: rk for p, rk in zip(ops_posts, _ranks)}
+                              st.session_state.setdefault("ops_check", {})[ops_bid] = _checked
+                      _rows = []
+                      for p in ops_posts:
+                          row = {"날짜": p["date"].strftime("%m-%d") if p["date"] else "", "카테고리": p["category"],
+                                 "제목": p["title"], "주소": p["link"]}
+                          if _checked is not None:
+                              row = {"검색": search_status(_checked.get(p["link"]), p), **row}
+                          _rows.append(row)
                       if _checked is not None:
-                          row = {"검색": search_status(_checked.get(p["link"]), p), **row}
-                      _rows.append(row)
-                  if _checked is not None:
-                      _cnt = {}
-                      for r in _rows:
-                          _k = r["검색"][0]
-                          _cnt[_k] = _cnt.get(_k, 0) + 1
-                      st.markdown(f"✅ 보임 **{_cnt.get('✅', 0)}** · ❌ 안 보임 **{_cnt.get('❌', 0)}** · "
-                                  f"⏳ 기다리는 중 **{_cnt.get('⏳', 0)}** · ⚠ 실패 **{_cnt.get('⚠', 0)}**")
-                      _order = {"❌": 0, "⚠": 1, "⏳": 2, "✅": 3}
-                      _rows.sort(key=lambda r: _order.get(r["검색"][0], 9))
-                  st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True,
-                               column_config={"주소": st.column_config.LinkColumn("주소", display_text="열기", width="small")})
+                          _cnt = {}
+                          for r in _rows:
+                              _cnt[r["검색"][0]] = _cnt.get(r["검색"][0], 0) + 1
+                          st.markdown(f"✅ 보임 **{_cnt.get('✅', 0)}** · ❌ 안 보임 **{_cnt.get('❌', 0)}** · "
+                                      f"⏳ 기다리는 중 **{_cnt.get('⏳', 0)}** · ⚠ 실패 **{_cnt.get('⚠', 0)}**")
+                          _order = {"❌": 0, "⚠": 1, "⏳": 2, "✅": 3}
+                          _rows.sort(key=lambda r: _order.get(r["검색"][0], 9))
+                      st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True,
+                                   column_config={"주소": st.column_config.LinkColumn("주소", display_text="열기", width="small")})
+              else:
+                  ot1, ot1b, ot2, ot3 = st.tabs(["🔎 색인 상태", "📈 노출·클릭", "📂 카테고리·발행 간격", "🔁 겹치는 글"])
+                  _cfg = gsc_config()
+                  with ot1:
+                      _ins = st.session_state.get("gsc_inspect", {}).get(ops_bid)
+                      if _cfg is None:
+                          st.info("🔑 서치콘솔 연결이 필요해요 — Streamlit Secrets에 [gsc] site·key_json을 넣어 주세요.")
+                      else:
+                          st.caption("구글이 직접 알려 주는 색인 상태예요(서치콘솔 URL 검사, 하루 2,000회까지). "
+                                     "❌ 글은 '검사 열기' → 서치콘솔에서 **색인 생성 요청**을 누르세요(요청은 API로 못 해요).")
+                          if st.button(f"🔎 색인 확인 (글 {len(ops_posts)}개)", type="primary", key="gsc_inspect_btn"):
+                              from concurrent.futures import ThreadPoolExecutor
+                              try:
+                                  gsc_token(_cfg)
+                                  with st.spinner("구글에 물어보는 중..."):
+                                      with ThreadPoolExecutor(max_workers=3) as ex:
+                                          _res = list(ex.map(lambda p: gsc_inspect(_cfg, p["link"]), ops_posts))
+                                  _ins = {p["link"]: r for p, r in zip(ops_posts, _res)}
+                                  st.session_state.setdefault("gsc_inspect", {})[ops_bid] = _ins
+                              except Exception as e:
+                                  st.error(str(e))
+                      _rows = []
+                      for p in ops_posts:
+                          row = {"날짜": p["date"].strftime("%m-%d") if p["date"] else "", "카테고리": p["category"], "제목": p["title"]}
+                          if _ins is not None:
+                              r = _ins.get(p["link"], {})
+                              _ic = {"PASS": "✅", "ERR": "⚠"}.get(r.get("verdict"), "❌")
+                              row = {"색인": f"{_ic} {r.get('state', '')}", **row, "마지막 크롤링": r.get("crawl", ""),
+                                     "검사": gsc_inspect_link(_cfg["site"], p["link"]) if _cfg else ""}
+                          else:
+                              row["주소"] = p["link"]
+                          _rows.append(row)
+                      if _ins is not None:
+                          _cnt = {}
+                          for r in _rows:
+                              _cnt[r["색인"][0]] = _cnt.get(r["색인"][0], 0) + 1
+                          st.markdown(f"✅ 색인됨 **{_cnt.get('✅', 0)}** · ❌ 안 됨 **{_cnt.get('❌', 0)}** · ⚠ 확인 실패 **{_cnt.get('⚠', 0)}**")
+                          _order = {"❌": 0, "⚠": 1, "✅": 2}
+                          _rows.sort(key=lambda r: _order.get(r["색인"][0], 9))
+                      st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True,
+                                   column_config={"주소": st.column_config.LinkColumn("주소", display_text="열기", width="small"),
+                                                  "검사": st.column_config.LinkColumn("검사", display_text="검사 열기", width="small")})
+                  with ot1b:
+                      _st = st.session_state.get("gsc_stats", {}).get(ops_bid)
+                      if _cfg is None:
+                          st.info("🔑 서치콘솔 연결이 필요해요 — Streamlit Secrets에 [gsc] site·key_json을 넣어 주세요.")
+                      else:
+                          if st.button("📈 최근 28일 실적 가져오기", type="primary", key="gsc_stats_btn"):
+                              try:
+                                  with st.spinner("서치콘솔에서 가져오는 중..."):
+                                      _st = gsc_page_stats(_cfg)
+                                  st.session_state.setdefault("gsc_stats", {})[ops_bid] = _st
+                              except Exception as e:
+                                  st.error(str(e))
+                      if _st is not None:
+                          _rows = []
+                          for p in ops_posts:
+                              s = _st["rows"].get(_norm_url(p["link"]), {})
+                              _rows.append({"제목": p["title"], "노출": s.get("노출", 0), "클릭": s.get("클릭", 0),
+                                            "평균 순위": s.get("순위"), "클릭 변화": s.get("클릭", 0) - s.get("전 클릭", 0),
+                                            "대표 검색어": s.get("검색어", ""), "주소": p["link"]})
+                          _rows.sort(key=lambda r: (-r["노출"], r["제목"]))
+                          _tot_i, _tot_c = sum(r["노출"] for r in _rows), sum(r["클릭"] for r in _rows)
+                          _zero = sum(1 for r in _rows if r["노출"] == 0)
+                          st.markdown(f"**{_st['range']}** · 노출 **{_tot_i:,}** · 클릭 **{_tot_c:,}** · 노출 0인 글 **{_zero}개**")
+                          st.caption("클릭 변화 = 직전 28일보다 늘거나 줄어든 클릭. 서치콘솔 데이터는 3일쯤 늦게 들어와요.")
+                          st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True,
+                                       column_config={"주소": st.column_config.LinkColumn("주소", display_text="열기", width="small")})
 
               with ot2:
-                  _cats = {}
-                  for p in ops_posts:
-                      c = _cats.setdefault(p["category"], {"카테고리": p["category"], "글 수": 0, "_last": None})
-                      c["글 수"] += 1
-                      if p["date"] and (c["_last"] is None or p["date"] > c["_last"]):
-                          c["_last"] = p["date"]
-                  _now = _now_kst()
-                  _crow = [{"카테고리": c["카테고리"], "글 수": c["글 수"],
-                            "마지막 글": c["_last"].strftime("%Y-%m-%d") if c["_last"] else "",
-                            "며칠 전": (_now - c["_last"]).days if c["_last"] else None}
-                           for c in sorted(_cats.values(), key=lambda c: -c["글 수"])]
-                  st.dataframe(pd.DataFrame(_crow), hide_index=True, use_container_width=True)
+                  st.dataframe(pd.DataFrame(render_ops_common(ops_posts)), hide_index=True, use_container_width=True)
                   if rh["max_gap"]:
                       g, d0, d1 = rh["max_gap"]
-                      st.caption(f"가장 오래 쉰 때: {d0.strftime('%m-%d')} → {d1.strftime('%m-%d')} ({g:.0f}일) · "
-                                 f"불러온 {len(ops_posts)}편 기준(RSS는 최근 50개까지만 줘요)")
+                      st.caption(f"가장 오래 쉰 때: {d0.strftime('%m-%d')} → {d1.strftime('%m-%d')} ({g:.0f}일) · 불러온 {len(ops_posts)}편 기준"
+                                 + ("(RSS는 최근 50개까지만 줘요)" if _naver else ""))
 
               with ot3:
                   _ov = find_overlaps(ops_posts)
@@ -2429,4 +2670,4 @@ if EXTRA_MENU == "🗂️ 블로그 운영실":
 
 
 st.markdown("---")
-st.caption("💡 키워드 찾기 v7.6 | 네이버 + 구글 + 데이터랩 + 트렌드")
+st.caption("💡 키워드 찾기 v7.7 | 네이버 + 구글 + 데이터랩 + 트렌드")
