@@ -1,9 +1,10 @@
 """
-키워드 종합 분석기 v7.8
+키워드 종합 분석기 v7.9
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
 
 [변경 이력]
+- v7.9: (D-1028-2) 네이버 기준도 보이게 — 키워드 도구의 "경쟁 정도"(높음·중간·낮음)를 카드 숫자 줄·키워드 자세히·검증 표에 "네이버 광고 경쟁"으로 표시. 이미 받아 오던 값(compIdx)이라 호출 추가 없음. 판정 계산은 그대로(v6.27: 광고 경쟁은 블로그 순위 난이도가 아니라 상업성).
 - v7.8: 운영실 숫자 칸 "최근 7일 / 30일"이 좁은 화면에서 "5 / 1…"로 잘림(실제 앱 확인) → "최근 7일 N편", 30일은 ? 도움말로. GitHub push를 클로드가 하는 첫 시험 버전.
 - v7.7: (D-1027-2) 블로그 운영실에 "구글 블로그" — 글 목록 = Blogger 피드(키 불필요, 최대 500개) / 서치콘솔 연결(Secrets [gsc] site·key_json, 서비스 계정 읽기 전용) → ① 🔎 색인 상태: URL 검사 API(구글이 직접 알려 주는 색인 여부·마지막 크롤링, 하루 2,000회) + "검사 열기"로 서치콘솔에서 색인 요청 ② 📈 노출·클릭: 최근 28일 글별 노출·클릭·평균 순위·대표 검색어·직전 28일 대비 클릭 변화. 서비스 계정 로그인(RS256 서명)은 부품 없이 직접 — openssl 서명과 같은지 확인. 카테고리·겹치는 글은 네이버와 공통(구글은 라벨).
 - v7.6: (D-1027-1) 🗂️ 블로그 운영실 메뉴 — 사장님 "릴스 속 운영실 같은 걸 내 블로그용으로". 블로그 아이디 → 네이버 블로그 RSS(키·로그인 불필요, 최근 50개)로 글 목록 → ① 검색 누락: 제목 그대로 블로그 검색(글당 검색 API 1콜, 동시 3개) 상위 30개 안에 내 글이 있나 ✅/❌/⏳(발행 2일 안) ② 카테고리별 글 수·마지막 글, 최근 7·30일 글 수·평균 간격·가장 오래 쉰 때 ③ 겹치는 글: 제목 낱말+태그 겹침(블로그 글 20% 넘게 붙은 공통 태그는 뺌). 방문자·유입 검색어는 네이버 API가 없어 안 함.
@@ -1519,13 +1520,14 @@ def run_main_search(seed, keys, stage, limit, prefer_related=False):
     rows = []
     for w in words:
         r = results.get(w)
-        row = {"선택": False, "판정": "—", "키워드": w, "월 검색": None, "경쟁 글": None, "비율": None, "주인공": "", "_순서": -999}
+        row = {"선택": False, "판정": "—", "키워드": w, "월 검색": None, "경쟁 글": None, "비율": None, "주인공": "", "네이버 광고": "", "_순서": -999}
         if r and not r.get("error"):
             v = judge_keyword(r, stage)
             s = r.get("monthly_search") or 0
             row.update({"판정": GRADE_LABEL[v["grade"]], "월 검색": s, "경쟁 글": r.get("blog_count"),
                         "비율": round(r["blog_count"] / s, 1) if s else None,
                         "주인공": OWNER_LABEL.get(r.get("owner", "mid"), ""),
+                        "네이버 광고": r.get("competition") if r.get("competition") in ("높음", "중간", "낮음") else "",   # v7.9
                         "_순서": GRADE_RANK[v["grade"]] * 100 + v["points"]})
         elif r:
             row["판정"] = "⚪ 자료 없음"
@@ -1549,6 +1551,8 @@ def render_detail(kw, res, keys, stage):
         m1.metric("월 검색", f"{search:,}")
         m1.caption(f"PC {res.get('monthly_pc', 0):,} · 모바일 {res.get('monthly_mobile', 0):,}")
         m2.metric("경쟁 글", f"{res.get('blog_count', 0):,}")
+        if res.get("competition") in ("높음", "중간", "낮음"):   # v7.9
+            m2.caption(f"네이버 광고 경쟁 {res['competition']} (키워드 도구 기준)")
         m3.metric("비율", ratio if ratio is not None else "—")
         m3.caption("경쟁 글 ÷ 월 검색 · 낮을수록 좋아요")
         m4.metric("상위 글 평균", f"{res['avg_days']}일 전" if res.get("avg_days") is not None else "—")
@@ -1672,7 +1676,8 @@ if SIDE_MENU == MENU_MAIN:   # v7.2: 왼쪽 메뉴에서 "키워드 찾기"를 �
                     _s = _r["월 검색"] or 0
                     _day = round(_s * 0.2 / 30)
                     _meta = (f"월 검색 <b>{_s:,}</b> · 경쟁 글 {(_r['경쟁 글'] or 0):,} · 비율 {_r['비율'] if _r['비율'] is not None else '—'}"
-                             f" · 1위 시 하루 약 <b>{_day:,}명</b>")
+                             f" · 1위 시 하루 약 <b>{_day:,}명</b>"
+                             + (f" · 네이버 광고 경쟁 {_r['네이버 광고']}" if _r.get("네이버 광고") else ""))   # v7.9
                 elif keys:
                     _meta = "판정 자료가 없어요 (검색량이 아주 적거나 너무 긴 말)"
                 _c1, _c2, _c3 = st.columns([0.45, 6.2, 2.2], vertical_alignment="center")
@@ -1689,7 +1694,7 @@ if SIDE_MENU == MENU_MAIN:   # v7.2: 왼쪽 메뉴에서 "키워드 찾기"를 �
                     st.markdown('<div class="kw-sep"></div>', unsafe_allow_html=True)
         _edited = _df
         if keys:
-            st.caption("추천부터 보세요. 비율이 낮을수록(1 안팎) 찾는 사람에 비해 글이 적어요. 「1위 시 하루」는 월 검색의 20%로 어림한 숫자예요.")
+            st.caption("추천부터 보세요. 비율이 낮을수록(1 안팎) 찾는 사람에 비해 글이 적어요. 「1위 시 하루」는 월 검색의 20%로 어림한 숫자예요. 「네이버 광고 경쟁」은 네이버 키워드 도구 값 — 광고주가 많이 붙는 키워드(돈 되는 주제)라는 뜻이고, 블로그 상위 노출 난이도와는 달라요.")
 
         with st.container(border=True):
             if not _picked:
@@ -1873,7 +1878,7 @@ if EXTRA_MENU == "📰 보도자료":
                           vol_s = f"{vol:,}" if isinstance(vol, int) else "?"
                           doc_s = f"{doc:,}" if isinstance(doc, int) else "?"
                           ratio_s = ratio if ratio is not None else "—"
-                          st.write(f"{emoji} **{c['키워드']}** — 월 {vol_s}회 · 문서 {doc_s}개 · 비율 {ratio_s} · 경쟁 {c['경쟁'] or '—'}")
+                          st.write(f"{emoji} **{c['키워드']}** — 월 {vol_s}회 · 문서 {doc_s}개 · 비율 {ratio_s} · 네이버 광고 경쟁 {c['경쟁'] or '—'}")
                   elif it.get("후보"):
                       st.write("후보 키워드: " + ", ".join(it["후보"]))
 
@@ -1925,7 +1930,7 @@ if EXTRA_MENU == "📋 여러 개 한꺼번에":
                           df_data.append({
                               "키워드": r["keyword"], "월간검색": r["monthly_search"],
                               "주간검색": r["weekly_search"], "일간검색": r["daily_search"],
-                              "블로그수": r["blog_count"], "경쟁": r["competition"],
+                              "블로그수": r["blog_count"], "네이버 광고 경쟁": r["competition"],
                               "모바일%": f"{r['mobile_ratio']*100:.0f}%",
                               "노출점수": r["exposure_score"],
                               "난이도": f"{r['difficulty_emoji']} {r['difficulty']}",
@@ -2146,9 +2151,9 @@ if EXTRA_MENU == "🔥 뜨는 키워드":
                           df_display["트렌드변화"] = df_display["트렌드변화"].apply(
                               lambda x: f"📈 +{x}%" if x > 5 else (f"📉 {x}%" if x < -5 else f"➡️ {x}%")
                           )
-                          df_display = df_display.rename(columns={"트렌드변화": "트렌드"})
+                          df_display = df_display.rename(columns={"트렌드변화": "트렌드", "경쟁": "네이버 광고 경쟁"})   # v7.9
                           # 보기 좋은 순서로 정렬 (관련 열이 있으면 포함)
-                          col_order = [c for c in ["키워드", "관련", "월간검색", "경쟁", "트렌드", "최근관심도"] if c in df_display.columns]
+                          col_order = [c for c in ["키워드", "관련", "월간검색", "네이버 광고 경쟁", "트렌드", "최근관심도"] if c in df_display.columns]
                           df_display = df_display[col_order]
                           st.dataframe(df_display, hide_index=True, use_container_width=True)
 
@@ -2671,4 +2676,4 @@ if EXTRA_MENU == "🗂️ 블로그 운영실":
 
 
 st.markdown("---")
-st.caption("💡 키워드 찾기 v7.8 | 네이버 + 구글 + 데이터랩 + 트렌드")
+st.caption("💡 키워드 찾기 v7.9 | 네이버 + 구글 + 데이터랩 + 트렌드")
