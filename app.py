@@ -1,9 +1,10 @@
 """
-키워드 종합 분석기 v7.9
+키워드 종합 분석기 v7.10
 ====================
 네이버 키워드 + 구글 트렌드 + 네이버 데이터랩 + 트렌드 발굴
 
 [변경 이력]
+- v7.10: (D-1029-1) 사장님 "추천·비추천만 말고 정확한 이유를 같이" — 카드마다 판정 알약 옆 뻔한 한 줄("글이 적어 쓰기 좋아요") 대신 이 키워드의 실제 이유를 한 줄로("왜: 검색 적당 · 글이 찾는 사람보다 적음 · 상위 글이 오래돼 틈"). judge_keyword가 판정 분기마다 짧은 이유(short)를 같이 만들어 계산과 설명이 어긋나지 않게. 판정 기준은 그대로.
 - v7.9: (D-1028-2) 네이버 기준도 보이게 — 키워드 도구의 "경쟁 정도"(높음·중간·낮음)를 카드 숫자 줄·키워드 자세히·검증 표에 "네이버 광고 경쟁"으로 표시. 이미 받아 오던 값(compIdx)이라 호출 추가 없음. 판정 계산은 그대로(v6.27: 광고 경쟁은 블로그 순위 난이도가 아니라 상업성).
 - v7.8: 운영실 숫자 칸 "최근 7일 / 30일"이 좁은 화면에서 "5 / 1…"로 잘림(실제 앱 확인) → "최근 7일 N편", 30일은 ? 도움말로. GitHub push를 클로드가 하는 첫 시험 버전.
 - v7.7: (D-1027-2) 블로그 운영실에 "구글 블로그" — 글 목록 = Blogger 피드(키 불필요, 최대 500개) / 서치콘솔 연결(Secrets [gsc] site·key_json, 서비스 계정 읽기 전용) → ① 🔎 색인 상태: URL 검사 API(구글이 직접 알려 주는 색인 여부·마지막 크롤링, 하루 2,000회) + "검사 열기"로 서치콘솔에서 색인 요청 ② 📈 노출·클릭: 최근 28일 글별 노출·클릭·평균 순위·대표 검색어·직전 28일 대비 클릭 변화. 서비스 계정 로그인(RS256 서명)은 부품 없이 직접 — openssl 서명과 같은지 확인. 카테고리·겹치는 글은 네이버와 공통(구글은 라벨).
@@ -130,6 +131,7 @@ st.markdown("""
     .pill{ display:inline-block; padding:.2rem .7rem; border-radius:999px; font-size:.8rem; font-weight:700; }
     .pill-ok{ background:#e8f7ee; color:#16803c; } .pill-mid{ background:#fff6e0; color:#a16207; } .pill-no{ background:#fdecec; color:#c62828; }
     .kw-hint{ color:var(--muted); font-size:.74rem; margin-top:.25rem; line-height:1.35; }
+    .kw-why{ color:var(--ink); font-size:.8rem; margin-top:.2rem; line-height:1.45; }
     .kw-sep{ border-top:1px solid #eef0f4; margin:.15rem 0; }
     /* 체크 상자도 파랑(기본 빨강 대신) — 배포는 app.py 하나라 테마 파일 대신 CSS로 */
     [data-testid="stCheckbox"] label:has(input:checked) > span:first-child{ background-color:var(--accent) !important; border-color:var(--accent) !important; }
@@ -649,35 +651,46 @@ def judge_keyword(result, blog_stage="신규"):
     ratio = round(doc / search, 1) if search else None  # 표의 '비율'과 동일 계산
 
     reasons = []
+    short = []   # v7.10: 카드에 보일 짧은 이유(같은 분기에서 함께 만든다)
     points = 0
     cap = None  # 수요가 약하면 등급 상한
 
     # 1) 수요 — 찾는 사람이 있어야 쓴다
     if search < rule["search_min"]:
         cap = "불합격"; reasons.append(f"🔴 검색량 {search:,}회 — 찾는 사람이 거의 없어요")
+        short.append((-1, "찾는 사람이 거의 없어요"))
     elif search < rule["search_soft"]:
         cap = "보통"; reasons.append(f"🟡 검색량 {search:,}회 — 작지만 확실한 롱테일 (최대 '보통')")
+        short.append((-1, "검색이 적은 롱테일"))
     elif search <= rule["search_high"]:
         points += 1; reasons.append(f"✅ 검색량 {search:,}회 — 적당해요")
+        short.append((1, "검색량 적당"))
     else:
         points -= 1; reasons.append(f"🟡 검색량 {search:,}회 — 넓은 키워드 (큰 블로그·언론이 선점) → 세부 키워드 추천")
+        short.append((-1, "너무 넓은 키워드라 큰 블로그가 선점"))
 
     # 2) 비율(문서수÷검색량) — 판정의 핵심
     if ratio is not None:
         if ratio < 1:
             points += 3; reasons.append(f"✅ 비율 {ratio} — 황금 (찾는 사람보다 글이 적어요)")
+            short.append((1, "찾는 사람보다 글이 적음"))
         elif ratio < 3:
             points += 2; reasons.append(f"✅ 비율 {ratio} — 수요 대비 경쟁이 적어요")
+            short.append((1, "찾는 사람에 비해 글이 적은 편"))
         elif ratio < 10:
             points += 1; reasons.append(f"🟡 비율 {ratio} — 보통")
+            short.append((0, "글 수는 보통"))
         elif ratio < 30:
             points -= 1; reasons.append(f"🔴 비율 {ratio} — 글이 검색량보다 10배 넘게 많아요")
+            short.append((-1, "글이 검색량의 10배 넘게 많음"))
         else:
             points -= 3; reasons.append(f"🔴 비율 {ratio} — 경쟁 과다")
+            short.append((-1, "글이 너무 많아 경쟁 과다"))
 
     # 3) 절대 문서수 — 극단만
     if doc >= rule["doc_huge"]:
         points -= 1; reasons.append(f"🔴 경쟁 글 {doc:,}개 — 판이 너무 커요")
+        short.append((-1, "경쟁 글이 수십만 개"))
     else:
         reasons.append(f"ℹ️ 경쟁 글 {doc:,}개")
 
@@ -685,8 +698,10 @@ def judge_keyword(result, blog_stage="신규"):
     if avg_days is not None:
         if avg_days >= 180:
             points += 1; reasons.append(f"✅ 상위 글 평균 {int(avg_days)}일 전 — 오래된 글이 자리 차지 중, 새 글이 들어갈 틈")
+            short.append((1, "상위 글이 오래돼 새 글이 들어갈 틈"))
         elif avg_days <= 30:
             reasons.append(f"ℹ️ 상위 글이 최근 글 위주 (평균 {int(avg_days)}일) — 시기성 키워드라 빨리 쓰는 게 유리")
+            short.append((0, "요즘 뜨는 주제라 빨리 쓰면 유리"))
 
     # 5) 광고 경쟁 — 안내만 (랭킹 난이도가 아니라 상업성)
     #    v7.1: 구매형 키워드에선 '높음' = 돈 되는 주제라는 신호로 안내
@@ -707,7 +722,24 @@ def judge_keyword(result, blog_stage="신규"):
     elif cap == "보통" and grade == "합격":
         grade, emoji = "보통", "🟡"
 
-    return {"grade": grade, "emoji": emoji, "reasons": reasons, "points": points}
+    return {"grade": grade, "emoji": emoji, "reasons": reasons, "points": points, "short": short}
+
+
+def why_line(v):
+    """v7.10: 카드에 보일 판정 이유 한 줄. 판정을 정한 쪽을 앞에, 반대쪽은 '좋은 점/아쉬운 점'으로."""
+    sh = v.get("short") or []
+    pos = [t for g, t in sh if g > 0]; neg = [t for g, t in sh if g < 0]; neu = [t for g, t in sh if g == 0]
+    if v["grade"] == "불합격":
+        out = " · ".join(neg[:2] or neu[:1]) + (f"  (좋은 점: {pos[0]})" if pos else "")
+    elif v["grade"] == "합격":
+        out = " · ".join(pos[:3]) + (f"  (아쉬운 점: {neg[0]})" if neg else "")
+    else:
+        lack = neg[:1] or [t for t in neu if t != "요즘 뜨는 주제라 빨리 쓰면 유리"][:1]
+        parts = (pos[:1] and ["좋은 점: " + pos[0]]) + (lack and ["아쉬운 점: " + lack[0]])
+        out = " · ".join(parts or neu[:2])
+    if v["grade"] != "불합격" and "요즘 뜨는 주제라 빨리 쓰면 유리" in neu:
+        out += " · 요즘 뜨는 주제라 빨리 쓰면 유리"
+    return out
 
 
 def build_seed_text(result, cat_hint="", sub_keywords=None):
@@ -1664,9 +1696,9 @@ if SIDE_MENU == MENU_MAIN:   # v7.2: 왼쪽 메뉴에서 "키워드 찾기"를 �
         with st.container(border=True):
             for _i, _r in enumerate(_rows):
                 _res = _data["results"].get(_r["키워드"]) or {}
-                _g = None
+                _g = None; _why = []
                 if keys and _res and not _res.get("error"):
-                    _g = judge_keyword(_res, in_stage)["grade"]
+                    _v = judge_keyword(_res, in_stage); _g = _v["grade"]; _why = why_line(_v)   # v7.10
                 _tags = []
                 if is_contrast(_r["키워드"]): _tags.append("⚖ 비교")
                 if is_buy_intent(_r["키워드"]): _tags.append("💰 구매형")
@@ -1686,10 +1718,11 @@ if SIDE_MENU == MENU_MAIN:   # v7.2: 왼쪽 메뉴에서 "키워드 찾기"를 �
                 _c2.markdown(
                     f'<div class="kw-row"><div class="kw-name">{html.escape(_r["키워드"])}'
                     + "".join(f'<span class="kw-tag">{html.escape(t)}</span>' for t in _tags) + "</div>"
-                    + (f'<div class="kw-meta">{_meta}</div>' if _meta else "") + "</div>", unsafe_allow_html=True)
+                    + (f'<div class="kw-meta">{_meta}</div>' if _meta else "")
+                    + (f'<div class="kw-why">왜: {html.escape(_why)}</div>' if _why else "") + "</div>", unsafe_allow_html=True)   # v7.10
                 if _g:
                     _c3.markdown(f'<div class="kw-judge"><span class="pill pill-{_CLS[_g]}">{GRADE_LABEL[_g][2:]}</span>'
-                                 f'<div class="kw-hint">{_HINT[_g]}</div></div>', unsafe_allow_html=True)
+                                 '</div>', unsafe_allow_html=True)   # v7.10: 뻔한 한 줄 대신 왼쪽에 "왜:" 이유
                 if _i < len(_rows) - 1:
                     st.markdown('<div class="kw-sep"></div>', unsafe_allow_html=True)
         _edited = _df
@@ -2676,4 +2709,4 @@ if EXTRA_MENU == "🗂️ 블로그 운영실":
 
 
 st.markdown("---")
-st.caption("💡 키워드 찾기 v7.9 | 네이버 + 구글 + 데이터랩 + 트렌드")
+st.caption("💡 키워드 찾기 v7.10 | 네이버 + 구글 + 데이터랩 + 트렌드")
